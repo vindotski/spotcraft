@@ -1,0 +1,13 @@
+# Global Caddy config for the apps server. Each hosted app gets its own site block
+# in sites/<app>.caddy (written by the agent); Caddy handles HTTPS automatically.
+{
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 2m
+		}
+	}
+}
+
+import /etc/caddy/sites/*.caddy

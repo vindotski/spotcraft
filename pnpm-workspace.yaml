@@ -1,0 +1,24 @@
+packages:
+  - apps/*
+  - agent
+
+# Supply chain, written out explicitly so a change of pnpm defaults can't
+# quietly weaken them: releases install only once they're a day old,
+# provenance can't be downgraded, transitive deps can't come from git or
+# tarball URLs, and only the packages below may run install scripts.
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+# chokidar 4.0.3 (via svelte-check) was published without the provenance earlier
+# versions had; excepted by exact version only, so a newer one is checked again.
+trustPolicyExclude:
+  - chokidar@4.0.3
+blockExoticSubdeps: true
+strictDepBuilds: true
+engineStrict: true
+
+allowBuilds:
+  esbuild: true
+
+catalog:
+  "@types/node": ^24.19.2
+  typescript: ^6.0.3

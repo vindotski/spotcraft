@@ -1,0 +1,71 @@
+# Ops server: the Spotcraft dashboard plus monitoring. Lives in /opt/spotcraft.
+# vmagent scrapes the apps server over the private network and probes the apps from
+# outside (blackbox); VictoriaMetrics/VictoriaLogs store what the dashboard shows.
+# Placeholder skeleton: images get pinned by digest when each service becomes real.
+name: spotcraft-ops
+
+services:
+  caddy:
+    image: caddy:2.11.7
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?set DASHBOARD_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  dashboard:
+    image: ${SPOTCRAFT_DASHBOARD_IMAGE:-vindotski/spotcraft-dashboard}:${SPOTCRAFT_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      ORIGIN: https://${DASHBOARD_DOMAIN}
+      AGENT_URL: http://${APPS_PRIVATE_IP:?set APPS_PRIVATE_IP in .env}:4000
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      VICTORIALOGS_URL: http://victorialogs:9428
+    volumes:
+      - dashboard_data:/data # SQLite: the project list
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.155.0
+    restart: unless-stopped
+    command: ["-storageDataPath=/storage", "-retentionPeriod=90d"]
+    volumes:
+      - vm_data:/storage
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    restart: unless-stopped
+    command: ["-storageDataPath=/storage", "-retentionPeriod=30d"]
+    ports:
+      # Log shippers on the apps server push here over the private network.
+      - "${OPS_PRIVATE_IP:?set OPS_PRIVATE_IP in .env}:9428:9428"
+    volumes:
+      - vl_data:/storage
+
+  vmagent:
+    image: victoriametrics/vmagent:v1.155.0
+    restart: unless-stopped
+    command:
+      - -promscrape.config=/etc/vmagent/scrape.yaml
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+    environment:
+      APPS_PRIVATE_IP: ${APPS_PRIVATE_IP}
+    volumes:
+      - ./scrape.yaml:/etc/vmagent/scrape.yaml:ro
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.29.1
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+  dashboard_data:
+  vm_data:
+  vl_data:

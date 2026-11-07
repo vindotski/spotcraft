@@ -1,0 +1,24 @@
+node_modules
+
+# Build output
+build
+dist
+.svelte-kit
+.output
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# OpenTofu
+.terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl.bak
+
+# OS / tooling
+.DS_Store
+vite.config.ts.timestamp-*

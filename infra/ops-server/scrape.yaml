@@ -1,0 +1,22 @@
+# vmagent scrape config. %{VAR} is expanded from the environment by vmagent.
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: ["%{APPS_PRIVATE_IP}:9100"]
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["%{APPS_PRIVATE_IP}:8080"]
+  # Uptime probes of each hosted app's public URL; the dashboard will manage this list.
+  - job_name: probes
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: []
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

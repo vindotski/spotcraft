@@ -1,0 +1,66 @@
+# Apps server: Caddy in front, one container per hosted app, the Spotcraft agent,
+# and exporters scraped by the ops server. Lives in /opt/spotcraft on the server.
+# Only Caddy is public; everything else binds to the private-network address.
+# Placeholder skeleton: images get pinned by digest when each service becomes real.
+name: spotcraft-apps
+
+services:
+  caddy:
+    image: caddy:2.11.7
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro # one file per app, written by the agent
+      - caddy_data:/data # certificates: keep across redeploys
+      - caddy_config:/config
+    networks: [edge]
+
+  agent:
+    image: ${SPOTCRAFT_AGENT_IMAGE:-vindotski/spotcraft-agent}:${SPOTCRAFT_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4000
+    ports:
+      - "${PRIVATE_IP:?set PRIVATE_IP in .env}:4000:4000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./apps:/opt/spotcraft/apps # per-app compose files
+      - ./sites:/opt/spotcraft/sites # per-app Caddy site blocks
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    command: ["--path.rootfs=/host"]
+    pid: host
+    ports:
+      - "${PRIVATE_IP}:9100:9100"
+    volumes:
+      - /:/host:ro,rslave
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    ports:
+      - "${PRIVATE_IP}:8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+
+# Hosted apps join this network so Caddy can reach them by service name.
+networks:
+  edge:
+    name: spotcraft-edge
+
+volumes:
+  caddy_data:
+  caddy_config:
