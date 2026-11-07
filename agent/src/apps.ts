@@ -22,6 +22,25 @@ export interface AppStatus extends AppSpec {
   status: string
 }
 
+/** The fields of `docker ps --format json` the agent reads. */
+interface ContainerRow {
+  Labels?: string
+  State?: string
+  Status?: string
+}
+
+function withStatus(spec: AppSpec, row: ContainerRow | undefined): AppStatus {
+  const status = row?.Status ?? ''
+  // `docker ps` has no health field; Docker writes it into the status text.
+  const health = /\((healthy|unhealthy|health: starting)\)/.exec(status)?.[1]
+  return {
+    ...spec,
+    state: row?.State ?? 'missing',
+    health: health === 'health: starting' ? 'starting' : (health ?? ''),
+    status,
+  }
+}
+
 const tail = (result: RunResult) => `${result.stdout}\n${result.stderr}`.trim().slice(-4000)
 
 /** Deploys and removes apps. One change at a time; reads run freely. */
@@ -66,31 +85,42 @@ export class Apps {
 
   async list(): Promise<AppStatus[]> {
     const specs = await this.#store.list()
-    return Promise.all(specs.map((spec) => this.#withStatus(spec)))
+    if (specs.length === 0) return []
+    const containers = await this.#containers()
+    return specs.map((spec) => withStatus(spec, containers.get(projectName(spec.name))))
   }
 
   async get(name: string): Promise<AppStatus | undefined> {
     const spec = await this.#store.get(name)
-    return spec ? this.#withStatus(spec) : undefined
+    if (!spec) return undefined
+    const containers = await this.#containers(projectName(name))
+    return withStatus(spec, containers.get(projectName(name)))
   }
 
-  async #withStatus(spec: AppSpec): Promise<AppStatus> {
-    const result = await this.#compose(spec.name, ['ps', '--all', '--format', 'json'])
-    // Newer Compose prints one JSON object per line; older prints an array.
-    const text = result.stdout.trim()
-    const rows: Array<Record<string, string>> = text.startsWith('[')
-      ? JSON.parse(text)
-      : text
-          .split('\n')
-          .filter(Boolean)
-          .map((line) => JSON.parse(line))
-    const row = rows[0]
-    return {
-      ...spec,
-      state: row?.State ?? 'missing',
-      health: row?.Health ?? '',
-      status: row?.Status ?? '',
+  /**
+   * Every app container's state from a single `docker ps` (one process, however many apps),
+   * keyed by Compose project. With `project`, only that app's container.
+   */
+  async #containers(project?: string): Promise<Map<string, ContainerRow>> {
+    const filter = project
+      ? `label=com.docker.compose.project=${project}`
+      : 'label=com.docker.compose.project'
+    const result = await this.#run('docker', [
+      'ps',
+      '--all',
+      '--filter',
+      filter,
+      '--format',
+      'json',
+    ])
+    const rows = new Map<string, ContainerRow>()
+    for (const line of result.stdout.split('\n')) {
+      if (!line.trim()) continue
+      const row = JSON.parse(line) as ContainerRow
+      const name = /(?:^|,)com\.docker\.compose\.project=([^,]+)/.exec(row.Labels ?? '')?.[1]
+      if (name?.startsWith('spotcraft-app-')) rows.set(name, row)
     }
+    return rows
   }
 
   /** Writes the app's files and rolls it out; on failure, puts the previous version back. */
@@ -124,7 +154,10 @@ export class Apps {
         await this.#restore(spec.name, previous)
         throw new AgentError('Caddy rejected the site configuration', 500, tail(reload))
       }
-      return this.#withStatus(spec)
+      return withStatus(
+        spec,
+        (await this.#containers(projectName(spec.name))).get(projectName(spec.name)),
+      )
     })
   }
 

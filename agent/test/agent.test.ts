@@ -14,16 +14,28 @@ const auth = { authorization: `Bearer ${TOKEN}` }
 /** Records docker calls; `fail` makes a matching call return an error. */
 function fakeDocker() {
   const calls: string[][] = []
+  const running = new Set<string>()
   let fail: ((args: string[]) => boolean) | undefined
   const run: Runner = async (_file, args): Promise<RunResult> => {
     calls.push(args)
     if (fail?.(args)) return { code: 1, stdout: '', stderr: 'boom' }
-    if (args.includes('ps')) {
-      return {
-        code: 0,
-        stdout: '{"State":"running","Health":"healthy","Status":"Up 1 minute (healthy)"}\n',
-        stderr: '',
-      }
+    // `docker compose -p <project> … up|down` starts or stops that project's container.
+    const project = args[0] === 'compose' ? args[args.indexOf('-p') + 1] : undefined
+    if (project && args.includes('up')) running.add(project)
+    if (project && args.includes('down')) running.delete(project)
+    if (args[0] === 'ps') {
+      // Like `docker ps --format json`: one line per container, labels as one string.
+      const only = /=(spotcraft-app-[^,]+)$/.exec(args[args.indexOf('--filter') + 1])?.[1]
+      const rows = [...running, 'spotcraft-apps']
+        .filter((p) => !only || p === only)
+        .map((p) =>
+          JSON.stringify({
+            Labels: `com.docker.compose.oneoff=False,com.docker.compose.project=${p},com.docker.compose.service=x`,
+            State: 'running',
+            Status: 'Up 1 minute (healthy)',
+          }),
+        )
+      return { code: 0, stdout: `${rows.join('\n')}\n`, stderr: '' }
     }
     if (args.includes('logs')) return { code: 0, stdout: 'line 1\nline 2\n', stderr: '' }
     return { code: 0, stdout: '', stderr: '' }
@@ -170,16 +182,38 @@ describe('agent', () => {
 
   it('lists, shows logs for and removes apps', async () => {
     await app.inject({ method: 'PUT', url: '/apps/tagtape', headers: auth, payload: spec })
+    await app.inject({
+      method: 'PUT',
+      url: '/apps/other',
+      headers: auth,
+      payload: { ...spec, domain: 'other.app' },
+    })
+    const calls = docker.calls.length
     const list = await app.inject({ url: '/apps', headers: auth })
     assert.deepEqual(
-      list.json().apps.map((a: { name: string }) => a.name),
-      ['tagtape'],
+      list
+        .json()
+        .apps.map((a: { name: string; state: string; health: string }) => [
+          a.name,
+          a.state,
+          a.health,
+        ]),
+      [
+        ['other', 'running', 'healthy'],
+        ['tagtape', 'running', 'healthy'],
+      ],
     )
+    assert.equal(docker.calls.length - calls, 1, 'one docker call for the whole list')
     const logs = await app.inject({ url: '/apps/tagtape/logs?tail=10', headers: auth })
     assert.equal(logs.body, 'line 1\nline 2\n')
     const del = await app.inject({ method: 'DELETE', url: '/apps/tagtape', headers: auth })
     assert.equal(del.statusCode, 204)
     assert.equal((await app.inject({ url: '/apps/tagtape', headers: auth })).statusCode, 404)
+    const after = await app.inject({ url: '/apps', headers: auth })
+    assert.deepEqual(
+      after.json().apps.map((a: { name: string }) => a.name),
+      ['other'],
+    )
     const again = await app.inject({ method: 'DELETE', url: '/apps/tagtape', headers: auth })
     assert.equal(again.statusCode, 404)
   })
