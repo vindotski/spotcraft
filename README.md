@@ -59,3 +59,15 @@ pnpm verify      # biome check + typecheck + build
 Fork the repo and keep your values in a GitHub environment (e.g. `production`): the
 Hetzner token, SSH key and domains as secrets and variables. Nothing personal lives in
 the repository.
+
+## Agent skills
+
+`.claude/skills/` holds vendored [agent skills](https://docs.claude.com/en/docs/claude-code/skills)
+for this stack: Svelte (official), shadcn-svelte (official), Fastify and Node (mcollina), pnpm and
+Vite (antfu), Docker (official), Terraform style (HashiCorp, applies to OpenTofu), VictoriaMetrics and
+VictoriaLogs queries (official), web interface guidelines (Vercel), and a local `commit-message`.
+
+`skills-lock.json` records each skill's source, commit, license and local patches. Patches keep
+agents on pinned tools: no unpinned `npx …@latest`, no blanket pre-approved `curl`, no rules
+fetched from a moving branch. To update a skill, re-copy it at a newer commit, re-apply its
+patches and bump the commit in the lock file.

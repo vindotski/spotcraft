@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "skills": {
+    "commit-message": {
+      "source": "local",
+      "note": "Written for Spotcraft (adapted from vinskiano): Conventional Commits, summary at most 50 characters."
+    },
+    "docker-build-strategies": {
+      "source": "https://github.com/docker/skills",
+      "path": "skills/docker-build-strategies",
+      "commit": "9f04a05d5fcdbfac0f6088bc711e930a75896482",
+      "license": "Apache-2.0",
+      "omitted": [
+        "agents/ (not used by Claude Code)"
+      ]
+    },
+    "docker-compose-patterns": {
+      "source": "https://github.com/docker/skills",
+      "path": "skills/docker-compose-patterns",
+      "commit": "9f04a05d5fcdbfac0f6088bc711e930a75896482",
+      "license": "Apache-2.0",
+      "omitted": [
+        "agents/ (not used by Claude Code)"
+      ]
+    },
+    "docker-destructive-guardrails": {
+      "source": "https://github.com/docker/skills",
+      "path": "skills/docker-destructive-guardrails",
+      "commit": "9f04a05d5fcdbfac0f6088bc711e930a75896482",
+      "license": "Apache-2.0",
+      "omitted": [
+        "agents/ (not used by Claude Code)"
+      ]
+    },
+    "fastify-best-practices": {
+      "source": "https://github.com/mcollina/skills",
+      "path": "skills/fastify",
+      "commit": "c75d70dbfbe991d8cec42aeda0b64ff14fbb9ac7",
+      "license": "MIT"
+    },
+    "node": {
+      "source": "https://github.com/mcollina/skills",
+      "path": "skills/node",
+      "commit": "c75d70dbfbe991d8cec42aeda0b64ff14fbb9ac7",
+      "license": "MIT"
+    },
+    "pnpm": {
+      "source": "https://github.com/antfu/skills",
+      "path": "skills/pnpm",
+      "commit": "f63e9ec7bc85f67364b6596c2d29da87e83ce445",
+      "license": "MIT"
+    },
+    "shadcn-svelte": {
+      "source": "https://github.com/huntabyte/shadcn-svelte",
+      "path": "skills/shadcn-svelte",
+      "commit": "3c4152d7d3904e76f6f756ec8ffca7c9ec72f977",
+      "license": "MIT",
+      "patches": [
+        "allowed-tools narrowed from `npx|pnpm dlx|bunx shadcn-svelte@latest *` to `pnpm --filter @spotcraft/ui exec shadcn-svelte *`: never pre-approve an unpinned CLI; the CLI is pinned in packages/ui",
+        "`npx shadcn-svelte@latest` replaced with the pinned command throughout; Spotcraft note added (shared packages/ui, `add -y`, move CLI-added deps to dependencies)"
+      ],
+      "omitted": [
+        "evals/ (not used by Claude Code)",
+        "agents/ (not used by Claude Code)"
+      ]
+    },
+    "svelte-code-writer": {
+      "source": "https://github.com/sveltejs/ai-tools",
+      "path": "tools/skills/svelte-code-writer",
+      "commit": "d3e755be770277d8c75fe61109b103b801b12775",
+      "license": "MIT",
+      "patches": [
+        "`npx @sveltejs/mcp` replaced with `pnpm exec svelte-mcp`: the CLI is pinned as a root devDependency instead of downloaded unpinned at run time"
+      ]
+    },
+    "svelte-core-bestpractices": {
+      "source": "https://github.com/sveltejs/ai-tools",
+      "path": "tools/skills/svelte-core-bestpractices",
+      "commit": "d3e755be770277d8c75fe61109b103b801b12775",
+      "license": "MIT"
+    },
+    "terraform-style-guide": {
+      "source": "https://github.com/hashicorp/agent-skills",
+      "path": "plugins/terraform/skills/terraform-style-guide",
+      "commit": "5e30fa5c867ba6777c37e4206babfd08049c396f",
+      "license": "MPL-2.0"
+    },
+    "victorialogs-query": {
+      "source": "https://github.com/VictoriaMetrics/skills",
+      "path": "plugins/query/skills/victorialogs-query",
+      "commit": "f5c4d60abbd0e19a293277e869fa40aa7e423d21",
+      "license": "Apache-2.0",
+      "patches": [
+        "`allowed-tools: Bash(curl:*), Bash(jq:*), Bash(date:*)` removed: pre-approving any curl is too broad"
+      ]
+    },
+    "victoriametrics-query": {
+      "source": "https://github.com/VictoriaMetrics/skills",
+      "path": "plugins/query/skills/victoriametrics-query",
+      "commit": "f5c4d60abbd0e19a293277e869fa40aa7e423d21",
+      "license": "Apache-2.0",
+      "patches": [
+        "`allowed-tools: Bash(curl:*), Bash(jq:*), Bash(head:*)` removed: pre-approving any curl is too broad"
+      ]
+    },
+    "vite": {
+      "source": "https://github.com/antfu/skills",
+      "path": "skills/vite",
+      "commit": "f63e9ec7bc85f67364b6596c2d29da87e83ce445",
+      "license": "MIT"
+    },
+    "web-design-guidelines": {
+      "source": "https://github.com/vercel-labs/agent-skills",
+      "path": "skills/web-design-guidelines",
+      "commit": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
+      "license": "MIT (stated in the repo README; no LICENSE file upstream)",
+      "includes": {
+        "source": "https://github.com/vercel-labs/web-interface-guidelines",
+        "path": "command.md",
+        "commit": "434b7f91364665f2f733b310ec54809bf8f37937",
+        "license": "MIT",
+        "vendoredAs": "references/guidelines.md"
+      },
+      "patches": [
+        "reads the pinned references/guidelines.md instead of fetching the guidelines from `main` at review time (unpinned remote text would become instructions)"
+      ],
+      "note": "Copied from the vinskiano repository, which vendored and patched it at this commit."
+    }
+  }
+}
