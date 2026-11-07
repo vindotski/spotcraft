@@ -1,12 +1,12 @@
 # Apps server: Caddy in front, one container per hosted app, the Spotcraft agent,
 # and exporters scraped by the ops server. Lives in /opt/spotcraft on the server.
 # Only Caddy is public; everything else binds to the private-network address.
-# Placeholder skeleton: images get pinned by digest when each service becomes real.
+# Third-party images are pinned by digest; bump the version and digest together.
 name: spotcraft-apps
 
 services:
   caddy:
-    image: caddy:2.11.7
+    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
     restart: unless-stopped
     ports:
       - "80:80"
@@ -39,7 +39,7 @@ services:
       - ./sites:/opt/spotcraft/sites # Caddy site block per app
 
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
     restart: unless-stopped
     command: ["--path.rootfs=/host"]
     pid: host
@@ -49,7 +49,7 @@ services:
       - /:/host:ro,rslave
 
   cadvisor:
-    image: ghcr.io/google/cadvisor:v0.60.6
+    image: ghcr.io/google/cadvisor:v0.60.6@sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
     restart: unless-stopped
     privileged: true
     devices:
@@ -58,7 +58,11 @@ services:
       - "${PRIVATE_IP}:8080:8080"
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      # Only the Docker socket (not all of /var/run): cAdvisor reads container names and labels.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker 29 keeps images in containerd, which cAdvisor needs to read container details.
+      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
+      - /var/lib/containerd:/var/lib/containerd:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
 

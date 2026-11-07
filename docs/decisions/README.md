@@ -13,3 +13,4 @@ that supersedes the old one; old records are never rewritten.
 | 0006 | [Shared UI package with shadcn-svelte](0006-shared-ui.md)                         | accepted |
 | 0007 | [App state lives on the apps server; agent API](0007-app-state-on-apps-server.md) | accepted |
 | 0008 | [Dashboard login with one admin password](0008-dashboard-login.md)                | accepted |
+| 0009 | [Multi-arch images on Docker Hub, built by CI](0009-images-on-docker-hub.md)      | accepted |

@@ -1,7 +1,8 @@
 # Spotcraft dashboard (SvelteKit, adapter-node), on the ops server behind Caddy.
 # Build from the repository root: docker build -f apps/dashboard/Dockerfile .
 
-FROM node:26-slim AS build
+# The build output is plain JavaScript, so it is built once on the native platform.
+FROM --platform=$BUILDPLATFORM node:26.13.0-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS build
 RUN npm install --global pnpm@12.4.1
 WORKDIR /repo
 COPY . .
@@ -9,7 +10,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile --filter @spotcraft/dashboard... \
   && pnpm --filter @spotcraft/dashboard build
 
-FROM node:26-slim
+FROM node:26.13.0-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072
 RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx \
   && install -d -o node -g node /probes
 WORKDIR /app

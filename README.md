@@ -7,7 +7,8 @@ one dashboard.
 Built for about ten small-to-mid server-rendered apps. Works on any Debian/Ubuntu VPS,
 with an optional OpenTofu module for Hetzner Cloud.
 
-> Status: skeleton. Nothing is deployable yet.
+> Status: the agent and dashboard work and publish as images; server provisioning and the
+> deploy workflow are next.
 
 ## How it fits together
 
@@ -53,6 +54,13 @@ Requires Node 24+ and pnpm.
 pnpm install
 pnpm verify      # biome check + typecheck + build
 ```
+
+## Images
+
+CI builds `spotcraft-agent` and `spotcraft-dashboard` for amd64 and arm64 on every pull
+request, and publishes them to Docker Hub from `main` (`latest`) and `v*` tags. Set the
+repository variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN` (a Docker Hub access
+token with read and write access).
 
 ## Deploying your own
 

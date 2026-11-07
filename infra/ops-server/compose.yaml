@@ -1,12 +1,13 @@
 # Ops server: the Spotcraft dashboard plus monitoring. Lives in /opt/spotcraft.
 # vmagent scrapes the apps server over the private network and probes the apps from
-# outside (blackbox); VictoriaMetrics/VictoriaLogs store what the dashboard shows.
-# Placeholder skeleton: images get pinned by digest when each service becomes real.
+# outside (blackbox); VictoriaMetrics stores what the dashboard shows. (VictoriaLogs
+# comes after the MVP; logs are read through the agent until then.)
+# Third-party images are pinned by digest; bump the version and digest together.
 name: spotcraft-ops
 
 services:
   caddy:
-    image: caddy:2.11.7
+    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
     restart: unless-stopped
     ports:
       - "80:80"
@@ -39,24 +40,14 @@ services:
     mem_limit: 512m
 
   victoriametrics:
-    image: victoriametrics/victoria-metrics:v1.155.0
+    image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
     restart: unless-stopped
     command: ["-storageDataPath=/storage", "-retentionPeriod=90d"]
     volumes:
       - vm_data:/storage
 
-  victorialogs:
-    image: victoriametrics/victoria-logs:v1.53.0
-    restart: unless-stopped
-    command: ["-storageDataPath=/storage", "-retentionPeriod=30d"]
-    ports:
-      # Log shippers on the apps server push here over the private network.
-      - "${OPS_PRIVATE_IP:?set OPS_PRIVATE_IP in .env}:9428:9428"
-    volumes:
-      - vl_data:/storage
-
   vmagent:
-    image: victoriametrics/vmagent:v1.155.0
+    image: victoriametrics/vmagent:v1.155.0@sha256:8e3c03905be15bba8312d4868e8ae6f9fc2fefee0a41d544472034249ca42bb4
     restart: unless-stopped
     command:
       - -promscrape.config=/etc/vmagent/scrape.yaml
@@ -68,7 +59,7 @@ services:
       - probes:/probes:ro
 
   blackbox:
-    image: prom/blackbox-exporter:v0.29.1
+    image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
     restart: unless-stopped
 
 volumes:
@@ -76,4 +67,3 @@ volumes:
   caddy_data:
   caddy_config:
   vm_data:
-  vl_data:
