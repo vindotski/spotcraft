@@ -15,5 +15,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:"
+  },
+  "exports": {
+    "./app-spec": "./src/app-spec.ts",
+    "./apps": "./src/apps.ts"
   }
 }

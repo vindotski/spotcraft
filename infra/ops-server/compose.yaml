@@ -23,12 +23,20 @@ services:
     image: ${SPOTCRAFT_DASHBOARD_IMAGE:-vindotski/spotcraft-dashboard}:${SPOTCRAFT_TAG:-latest}
     restart: unless-stopped
     environment:
-      PORT: 3000
-      ORIGIN: https://${DASHBOARD_DOMAIN}
       AGENT_URL: http://${APPS_PRIVATE_IP:?set APPS_PRIVATE_IP in .env}:4000
       AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
+      DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       VICTORIAMETRICS_URL: http://victoriametrics:8428
-      VICTORIALOGS_URL: http://victorialogs:9428
+    volumes:
+      - probes:/probes # uptime-probe targets the dashboard writes for vmagent
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
 
   victoriametrics:
     image: victoriametrics/victoria-metrics:v1.155.0
@@ -57,12 +65,14 @@ services:
       APPS_PRIVATE_IP: ${APPS_PRIVATE_IP}
     volumes:
       - ./scrape.yaml:/etc/vmagent/scrape.yaml:ro
+      - probes:/probes:ro
 
   blackbox:
     image: prom/blackbox-exporter:v0.29.1
     restart: unless-stopped
 
 volumes:
+  probes:
   caddy_data:
   caddy_config:
   vm_data:

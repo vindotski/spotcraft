@@ -12,3 +12,4 @@ that supersedes the old one; old records are never rewritten.
 | 0005 | [One pnpm monorepo: SvelteKit and Fastify](0005-repo-and-stack.md)                | accepted |
 | 0006 | [Shared UI package with shadcn-svelte](0006-shared-ui.md)                         | accepted |
 | 0007 | [App state lives on the apps server; agent API](0007-app-state-on-apps-server.md) | accepted |
+| 0008 | [Dashboard login with one admin password](0008-dashboard-login.md)                | accepted |

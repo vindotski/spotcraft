@@ -13,6 +13,23 @@ export default defineConfig({
           filename.split(/[/\\]/).includes('node_modules') ? undefined : true,
       },
       adapter: adapter(),
+      // Scripts only from this origin (SvelteKit hashes its own inline script). Inline styles
+      // are allowed because components set style attributes.
+      csp: {
+        mode: 'auto',
+        directives: {
+          'default-src': ['self'],
+          'script-src': ['self'],
+          'style-src': ['self', 'unsafe-inline'],
+          'img-src': ['self', 'data:'],
+          'font-src': ['self'],
+          'connect-src': ['self'],
+          'form-action': ['self'],
+          'frame-ancestors': ['none'],
+          'base-uri': ['self'],
+          'object-src': ['none'],
+        },
+      },
     }),
   ],
 })

@@ -13,9 +13,12 @@
     "preview": "vite preview",
     "start": "node build",
     "prepare": "svelte-kit sync || echo \"\"",
-    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "hash-password": "node scripts/hash-password.ts"
   },
   "devDependencies": {
+    "@spotcraft/agent": "workspace:*",
+    "@spotcraft/ui": "workspace:*",
     "@sveltejs/adapter-node": "^6.0.0",
     "@sveltejs/kit": "^3.0.0",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
@@ -26,8 +29,5 @@
     "tailwindcss": "^4.3.0",
     "typescript": "catalog:",
     "vite": "^8.3.0"
-  },
-  "dependencies": {
-    "@spotcraft/ui": "workspace:*"
   }
 }
