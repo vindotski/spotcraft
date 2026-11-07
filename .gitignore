@@ -16,6 +16,7 @@ dist
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfplan
 !*.tfvars.example
 .terraform.lock.hcl.bak
 

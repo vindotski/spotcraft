@@ -2,6 +2,15 @@
 **/build
 **/.svelte-kit
 .git
+.claude
+
+# Secrets and local state: never in a build context, even a local one.
 .env
 **/.env
+**/.env.*
+!**/.env.example
 infra/hetzner/.terraform
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.tfplan
