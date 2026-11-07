@@ -5,7 +5,7 @@
   "private": true,
   "license": "Apache-2.0",
   "author": "Ivan Vinski (https://www.vin.ski)",
-  "homepage": "https://github.com/vindotski/spotcraft",
+  "homepage": "https://spotcraft.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vindotski/spotcraft.git"

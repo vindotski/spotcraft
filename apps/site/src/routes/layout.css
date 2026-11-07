@@ -1,1 +1,63 @@
 @import "@spotcraft/ui/styles.css";
+
+@layer base {
+  html {
+    scroll-padding-top: 5rem;
+    touch-action: manipulation;
+  }
+}
+
+/* Rendered Markdown in the docs: built from the theme's tokens, so it follows dark mode. */
+.doc {
+  @apply text-[0.975rem] leading-7 text-foreground;
+
+  & > * + * {
+    @apply mt-4;
+  }
+  & a {
+    @apply underline underline-offset-4 decoration-muted-foreground hover:decoration-foreground;
+  }
+  & h2 {
+    @apply mt-12 border-b pb-2 font-heading text-2xl font-semibold;
+  }
+  & h3 {
+    @apply mt-8 font-heading text-lg font-semibold;
+  }
+  & h2 a,
+  & h3 a {
+    @apply no-underline;
+  }
+  & ul {
+    @apply list-disc pl-6;
+  }
+  & ol {
+    @apply list-decimal pl-6;
+  }
+  & li + li {
+    @apply mt-1;
+  }
+  & code {
+    @apply bg-muted px-1 py-0.5 font-mono text-[0.875em];
+  }
+  & pre {
+    @apply overflow-x-auto border bg-muted p-4 text-sm leading-6;
+  }
+  & pre code {
+    @apply bg-transparent p-0;
+  }
+  & blockquote {
+    @apply border-l-2 pl-4 text-muted-foreground;
+  }
+  & table {
+    @apply block w-full overflow-x-auto text-sm;
+  }
+  & th {
+    @apply border-b px-3 py-2 text-left font-medium whitespace-nowrap;
+  }
+  & td {
+    @apply border-b px-3 py-2 align-top;
+  }
+  & hr {
+    @apply my-8;
+  }
+}

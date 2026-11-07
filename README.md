@@ -1,6 +1,6 @@
 # Spotcraft
 
-Self-hosted deployment for a handful of web apps on your own servers. Give it a Docker image
+Self-hosted deployment for a handful of web apps on your own servers ([spotcraft.dev](https://spotcraft.dev)). Give it a Docker image
 and a domain; it runs the app behind HTTPS, monitors it, and shows everything in one dashboard.
 
 Spotcraft is made for one person running about ten small-to-mid server-rendered apps. It runs on
@@ -52,35 +52,10 @@ Why it's built this way is recorded in the [decision records](docs/decisions).
 
 ## Deploying your own
 
-1. **Fork** this repository.
-2. **Servers.** Create two servers with [`infra/hetzner`](infra/hetzner), or any two
-   Debian/Ubuntu VPSes prepared with [`infra/cloud-init.yaml`](infra/cloud-init.yaml) and a
-   private network between them (`10.0.0.2` apps, `10.0.0.3` ops by default).
-3. **DNS.** Point the dashboard's domain (A and AAAA) at the ops server.
-4. **Images.** Either use the published images (`vindotski/spotcraft-*`), or publish your own:
-   set the repository variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN` (a Docker
-   Hub token with read and write access) and push to `main`.
-5. **GitHub environment.** In the repository settings, create the environment `production`:
-
-   | Kind     | Name                      | Value                                                                |
-   | -------- | ------------------------- | -------------------------------------------------------------------- |
-   | variable | `APPS_HOST`               | apps server public IP                                                |
-   | variable | `OPS_HOST`                | ops server public IP                                                 |
-   | variable | `DASHBOARD_DOMAIN`        | e.g. `ops.example.com`                                               |
-   | secret   | `DEPLOY_SSH_KEY`          | the deploy user's private key                                        |
-   | secret   | `KNOWN_HOSTS`             | `ssh-keyscan -t ed25519 <apps ip> <ops ip>` (check the fingerprints) |
-   | secret   | `AGENT_TOKEN`             | `openssl rand -hex 32`                                               |
-   | secret   | `SESSION_SECRET`          | `openssl rand -hex 32`                                               |
-   | secret   | `DASHBOARD_PASSWORD_HASH` | `pnpm --filter @spotcraft/dashboard hash-password`                   |
-
-   Optional variables: `APPS_PRIVATE_IP` and `OPS_PRIVATE_IP` if your private addresses differ.
-
-6. **Deploy.** Run the **Deploy** workflow (Actions → Deploy → Run workflow) with a version such
-   as `0.1.0`, or `latest`. It deploys the apps server, then the ops server, waits for every
-   service to be healthy, and checks the dashboard from outside.
-
-Then log in at your dashboard's domain and add your first app. Point the app's domain at the
-apps server; its certificate arrives on the first request.
+Fork the repository, create two servers (an OpenTofu module does it on Hetzner), point a
+domain at the dashboard, fill in a GitHub environment, and run the **Deploy** workflow. The
+whole walk-through is in [Getting started](docs/getting-started.md), also at
+[spotcraft.dev/docs](https://spotcraft.dev/docs/getting-started).
 
 To upgrade, run the Deploy workflow with the new version. To roll back, run it with the old one.
 

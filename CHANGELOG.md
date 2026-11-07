@@ -32,6 +32,9 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - **Deploy workflow**: deploys both servers at a published image tag from a GitHub
   environment, then checks the dashboard from outside.
 - Multi-arch images (amd64 and arm64) on Docker Hub with provenance and SBOM.
+- **Website** at spotcraft.dev (`spotcraft-site` image): a home page and the docs for each
+  release, rendered from the repository's Markdown.
+- The dashboard follows the system's dark mode.
 
 ### Security
 
