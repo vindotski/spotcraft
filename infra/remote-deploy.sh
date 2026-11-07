@@ -15,6 +15,11 @@ cd /opt/spotcraft
 require() {
   for name in "$@"; do
     value="${!name:-}"
+    # Secrets pasted from `... | pbcopy` end in a newline; no valid value starts or ends with
+    # whitespace, so trim it before checking.
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf -v "$name" '%s' "$value"
     if [ -z "$value" ]; then
       echo "::error::$name is empty" >&2
       exit 1
