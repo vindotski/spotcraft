@@ -1,0 +1,111 @@
+name: Deploy
+
+# Deploys Spotcraft itself (agent + monitoring on the apps server, dashboard + monitoring on
+# the ops server) at a published image tag. Hosted apps are deployed from the dashboard.
+# Manual on purpose: pick the tag (latest, or sha-abc1234 to roll back).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag of spotcraft-agent and spotcraft-dashboard (latest or sha-abc1234)"
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://${{ vars.DASHBOARD_DOMAIN }}
+    env:
+      TAG: ${{ inputs.tag }}
+      NAMESPACE: ${{ vars.DOCKERHUB_USERNAME || 'vindotski' }}
+      APPS_HOST: ${{ vars.APPS_HOST }}
+      OPS_HOST: ${{ vars.OPS_HOST }}
+      APPS_PRIVATE_IP: ${{ vars.APPS_PRIVATE_IP || '10.0.0.2' }}
+      DASHBOARD_DOMAIN: ${{ vars.DASHBOARD_DOMAIN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check inputs
+        run: |
+          if [[ ! "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::Invalid image tag: $TAG"
+            exit 1
+          fi
+          for name in APPS_HOST OPS_HOST DASHBOARD_DOMAIN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Set the $name variable on the production environment"
+              exit 1
+            fi
+          done
+          # Fail before touching a server if either image was never published.
+          docker manifest inspect "$NAMESPACE/spotcraft-agent:$TAG" > /dev/null
+          docker manifest inspect "$NAMESPACE/spotcraft-dashboard:$TAG" > /dev/null
+
+      # Plain ssh/scp, no third-party action. Host keys are pinned via a secret, so a
+      # man-in-the-middle can't impersonate either server.
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          {
+            printf 'Host apps\n  HostName %s\n' "$APPS_HOST"
+            printf 'Host ops\n  HostName %s\n' "$OPS_HOST"
+            printf 'Host *\n  User deploy\n  IdentityFile ~/.ssh/id_deploy\n  StrictHostKeyChecking yes\n  BatchMode yes\n  ConnectTimeout 15\n'
+          } > ~/.ssh/config
+
+      - name: Deploy the apps server
+        env:
+          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+        run: |
+          scp infra/apps-server/compose.yaml infra/apps-server/Caddyfile apps:/opt/spotcraft/
+          {
+            printf 'export ROLE=apps SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q PRIVATE_IP=%q AGENT_TOKEN=%q\n' \
+              "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$AGENT_TOKEN"
+            cat infra/remote-deploy.sh
+          } | ssh apps bash -s
+
+      - name: Deploy the ops server
+        env:
+          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+          DASHBOARD_PASSWORD_HASH: ${{ secrets.DASHBOARD_PASSWORD_HASH }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          scp infra/ops-server/compose.yaml infra/ops-server/Caddyfile infra/ops-server/scrape.yaml ops:/opt/spotcraft/
+          {
+            printf 'export ROLE=ops SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q APPS_PRIVATE_IP=%q DASHBOARD_DOMAIN=%q\n' \
+              "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$DASHBOARD_DOMAIN"
+            printf 'export AGENT_TOKEN=%q DASHBOARD_PASSWORD_HASH=%q SESSION_SECRET=%q\n' \
+              "$AGENT_TOKEN" "$DASHBOARD_PASSWORD_HASH" "$SESSION_SECRET"
+            cat infra/remote-deploy.sh
+          } | ssh ops bash -s
+
+      - name: Check the dashboard from outside
+        run: |
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null "https://$DASHBOARD_DOMAIN/login" && break
+            sleep 4
+          done
+          page="$(curl -sf "https://$DASHBOARD_DOMAIN/login")"
+          grep -q 'Log in · Spotcraft' <<<"$page"
+          echo "Spotcraft $TAG is live at https://$DASHBOARD_DOMAIN"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

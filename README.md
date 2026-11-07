@@ -7,8 +7,8 @@ one dashboard.
 Built for about ten small-to-mid server-rendered apps. Works on any Debian/Ubuntu VPS,
 with an optional OpenTofu module for Hetzner Cloud.
 
-> Status: the agent and dashboard work and publish as images, and OpenTofu creates the
-> Hetzner servers; the deploy workflow is next.
+> Status: MVP. The agent, dashboard, images, Hetzner servers and the deploy workflow work;
+> next is moving the first real apps onto it.
 
 ## How it fits together
 
@@ -65,18 +65,29 @@ token with read and write access).
 
 ## Deploying your own
 
-Fork the repo and keep your values in a GitHub environment (e.g. `production`): the
-Hetzner token, SSH key and domains as secrets and variables. Nothing personal lives in
-the repository.
+1. **Servers.** Create the two servers with [`infra/hetzner`](infra/hetzner) (or any two
+   Debian/Ubuntu VPSes prepared with [`infra/cloud-init.yaml`](infra/cloud-init.yaml) and a
+   private network between them).
+2. **DNS.** Point the dashboard's domain (A and AAAA) at the ops server.
+3. **GitHub environment.** In the repository settings, create the environment `production`:
 
-## Agent skills
+   | Kind     | Name                      | Value                                                                |
+   | -------- | ------------------------- | -------------------------------------------------------------------- |
+   | variable | `APPS_HOST`               | apps server public IP                                                |
+   | variable | `OPS_HOST`                | ops server public IP                                                 |
+   | variable | `DASHBOARD_DOMAIN`        | e.g. `ops.example.com`                                               |
+   | secret   | `DEPLOY_SSH_KEY`          | the deploy user's private key                                        |
+   | secret   | `KNOWN_HOSTS`             | `ssh-keyscan -t ed25519 <apps ip> <ops ip>` (check the fingerprints) |
+   | secret   | `AGENT_TOKEN`             | `openssl rand -hex 32`                                               |
+   | secret   | `SESSION_SECRET`          | `openssl rand -hex 32`                                               |
+   | secret   | `DASHBOARD_PASSWORD_HASH` | `pnpm --filter @spotcraft/dashboard hash-password`                   |
 
-`.claude/skills/` holds vendored [agent skills](https://docs.claude.com/en/docs/claude-code/skills)
-for this stack: Svelte (official), shadcn-svelte (official), Fastify and Node (mcollina), pnpm and
-Vite (antfu), Docker (official), Terraform style (HashiCorp, applies to OpenTofu), VictoriaMetrics and
-VictoriaLogs queries (official), web interface guidelines (Vercel), and a local `commit-message`.
+   `APPS_PRIVATE_IP` (default `10.0.0.2`) is an optional variable. The repository-level
+   `DOCKERHUB_USERNAME` tells the deploy whose images to pull.
 
-`skills-lock.json` records each skill's source, commit, license and local patches. Patches keep
-agents on pinned tools: no unpinned `npx …@latest`, no blanket pre-approved `curl`, no rules
-fetched from a moving branch. To update a skill, re-copy it at a newer commit, re-apply its
-patches and bump the commit in the lock file.
+4. **Deploy.** Run the **Deploy** workflow (Actions → Deploy → Run workflow) with a published
+   tag: `latest`, or `sha-abc1234` to pin or roll back. It copies each server's compose files,
+   writes its `.env` (readable only by `deploy`), pulls, starts everything and waits for
+   health, apps server first, then checks the dashboard from outside.
+
+Then log in at the dashboard's domain and add apps. Nothing personal lives in the repository.
