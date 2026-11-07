@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.8"
+  required_version = ">= 1.10"
 
   required_providers {
     hcloud = {
@@ -7,8 +7,4 @@ terraform {
       version = "~> 1.70"
     }
   }
-}
-
-provider "hcloud" {
-  token = var.hcloud_token
 }

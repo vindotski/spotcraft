@@ -7,8 +7,8 @@ one dashboard.
 Built for about ten small-to-mid server-rendered apps. Works on any Debian/Ubuntu VPS,
 with an optional OpenTofu module for Hetzner Cloud.
 
-> Status: the agent and dashboard work and publish as images; server provisioning and the
-> deploy workflow are next.
+> Status: the agent and dashboard work and publish as images, and OpenTofu creates the
+> Hetzner servers; the deploy workflow is next.
 
 ## How it fits together
 
@@ -35,16 +35,17 @@ with an optional OpenTofu module for Hetzner Cloud.
 
 ## Repository
 
-| Path                | What                                                  |
-| ------------------- | ----------------------------------------------------- |
-| `apps/dashboard`    | SvelteKit dashboard (ops server)                      |
-| `apps/site`         | SvelteKit website and docs                            |
-| `packages/ui`       | shared shadcn-svelte components and theme             |
-| `agent`             | Fastify agent (apps server)                           |
-| `infra/apps-server` | compose, Caddyfile, cloud-init for the apps server    |
-| `infra/ops-server`  | compose, scrape config, cloud-init for the ops server |
-| `infra/hetzner`     | optional OpenTofu module for Hetzner Cloud            |
-| `docs/decisions`    | architecture decision records                         |
+| Path                    | What                                         |
+| ----------------------- | -------------------------------------------- |
+| `apps/dashboard`        | SvelteKit dashboard (ops server)             |
+| `apps/site`             | SvelteKit website and docs                   |
+| `packages/ui`           | shared shadcn-svelte components and theme    |
+| `agent`                 | Fastify agent (apps server)                  |
+| `infra/cloud-init.yaml` | first-boot setup for either server           |
+| `infra/apps-server`     | compose and Caddyfile for the apps server    |
+| `infra/ops-server`      | compose and scrape config for the ops server |
+| `infra/hetzner`         | optional OpenTofu module for Hetzner Cloud   |
+| `docs/decisions`        | architecture decision records                |
 
 ## Development
 

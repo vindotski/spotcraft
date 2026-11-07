@@ -12,7 +12,8 @@ It is a separate machine so that it can still report when the apps server is dow
 | `blackbox`        | internal       | HTTP uptime probes of each app's public URL                 |
 
 Files: `compose.yaml`, `scrape.yaml` (vmagent targets), `Caddyfile`, `.env.example`
-(copy to `.env`), `cloud-init.yaml`.
+(copy to `.env`). A fresh server is prepared by [`../cloud-init.yaml`](../cloud-init.yaml) with
+`role` set to `ops`.
 
 Logs are read through the agent (`docker logs`); VictoriaLogs comes after the MVP.
 

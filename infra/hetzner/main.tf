@@ -1,51 +1,100 @@
-# Two servers on one private network. Placeholder skeleton: no firewall rules,
-# backups or outputs yet.
-
 resource "hcloud_ssh_key" "deploy" {
-  name       = "spotcraft"
-  public_key = var.ssh_public_key
+  name       = "spotcraft-deploy"
+  public_key = trimspace(var.deploy_ssh_public_key)
+  labels     = local.labels
 }
 
-resource "hcloud_network" "private" {
+resource "hcloud_network" "main" {
   name     = "spotcraft"
   ip_range = "10.0.0.0/16"
+  labels   = local.labels
 }
 
-resource "hcloud_network_subnet" "private" {
-  network_id   = hcloud_network.private.id
+resource "hcloud_network_subnet" "main" {
+  network_id   = hcloud_network.main.id
   type         = "cloud"
   network_zone = "eu-central"
   ip_range     = "10.0.0.0/24"
 }
 
-resource "hcloud_server" "apps" {
-  name        = "spotcraft-apps"
-  server_type = var.apps_server_type
-  image       = "debian-13"
-  location    = var.location
-  ssh_keys    = [hcloud_ssh_key.deploy.id]
-  user_data   = file("${path.module}/../apps-server/cloud-init.yaml")
+# Public traffic: SSH, HTTP and HTTPS (incl. HTTP/3) and ping. The private network is not
+# filtered by Hetzner firewalls; ufw on each server covers that side.
+resource "hcloud_firewall" "main" {
+  name   = "spotcraft"
+  labels = local.labels
 
-  network {
-    network_id = hcloud_network.private.id
-    ip         = "10.0.0.2"
+  rule {
+    description = "SSH"
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "22"
+    source_ips  = var.ssh_source_ips
   }
 
-  depends_on = [hcloud_network_subnet.private]
+  rule {
+    description = "HTTP"
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "80"
+    source_ips  = ["0.0.0.0/0", "::/0"]
+  }
+
+  rule {
+    description = "HTTPS"
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "443"
+    source_ips  = ["0.0.0.0/0", "::/0"]
+  }
+
+  rule {
+    description = "HTTP/3"
+    direction   = "in"
+    protocol    = "udp"
+    port        = "443"
+    source_ips  = ["0.0.0.0/0", "::/0"]
+  }
+
+  rule {
+    description = "Ping"
+    direction   = "in"
+    protocol    = "icmp"
+    source_ips  = ["0.0.0.0/0", "::/0"]
+  }
 }
 
-resource "hcloud_server" "ops" {
-  name        = "spotcraft-ops"
-  server_type = var.ops_server_type
-  image       = "debian-13"
-  location    = var.location
-  ssh_keys    = [hcloud_ssh_key.deploy.id]
-  user_data   = file("${path.module}/../ops-server/cloud-init.yaml")
+resource "hcloud_server" "main" {
+  for_each = local.servers
 
-  network {
-    network_id = hcloud_network.private.id
-    ip         = "10.0.0.3"
+  name               = "spotcraft-${each.key}"
+  server_type        = each.value
+  image              = "debian-13"
+  location           = var.location
+  ssh_keys           = [hcloud_ssh_key.deploy.id]
+  firewall_ids       = [hcloud_firewall.main.id]
+  delete_protection  = var.protect_servers
+  rebuild_protection = var.protect_servers
+  labels             = merge(local.labels, { role = each.key })
+
+  user_data = templatefile("${path.module}/../cloud-init.yaml", {
+    role           = each.key
+    deploy_ssh_key = trimspace(var.deploy_ssh_public_key)
+  })
+
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = true
   }
 
-  depends_on = [hcloud_network_subnet.private]
+  network {
+    network_id = hcloud_network.main.id
+    ip         = local.private_ips[each.key]
+  }
+
+  depends_on = [hcloud_network_subnet.main]
+
+  lifecycle {
+    # cloud-init only runs on first boot; editing it later must not replace a server.
+    ignore_changes = [user_data, ssh_keys, image]
+  }
 }
