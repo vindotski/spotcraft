@@ -4,7 +4,8 @@ SvelteKit app (adapter-node) that runs on the **ops server**. It will list proje
 (Docker Hub images), tell the agent on the apps server to deploy them, and show metrics
 and logs from VictoriaMetrics and VictoriaLogs.
 
-Current state: a placeholder page.
+Current state: a placeholder page. Styling and components come from
+[`@spotcraft/ui`](../../packages/ui) (Tailwind v4, shadcn-svelte).
 
 ```sh
 pnpm --filter @spotcraft/dashboard build      # output in build/

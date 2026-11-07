@@ -1,5 +1,6 @@
 packages:
   - apps/*
+  - packages/*
   - agent
 
 # Supply chain, written out explicitly so a change of pnpm defaults can't

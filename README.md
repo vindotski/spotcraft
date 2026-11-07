@@ -38,6 +38,7 @@ with an optional OpenTofu module for Hetzner Cloud.
 | ------------------- | ----------------------------------------------------- |
 | `apps/dashboard`    | SvelteKit dashboard (ops server)                      |
 | `apps/site`         | SvelteKit website and docs                            |
+| `packages/ui`       | shared shadcn-svelte components and theme             |
 | `agent`             | Fastify agent (apps server)                           |
 | `infra/apps-server` | compose, Caddyfile, cloud-init for the apps server    |
 | `infra/ops-server`  | compose, scrape config, cloud-init for the ops server |

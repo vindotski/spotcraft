@@ -10,3 +10,4 @@ that supersedes the old one; old records are never rewritten.
 | 0003 | [VictoriaMetrics and VictoriaLogs](0003-victoria-monitoring.md)    | accepted |
 | 0004 | [Generic VPS bootstrap, optional Hetzner](0004-provisioning.md)    | accepted |
 | 0005 | [One pnpm monorepo: SvelteKit and Fastify](0005-repo-and-stack.md) | accepted |
+| 0006 | [Shared UI package with shadcn-svelte](0006-shared-ui.md)          | accepted |
