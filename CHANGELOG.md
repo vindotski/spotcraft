@@ -10,6 +10,8 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-07
+
 The first release: two servers, a deploy agent, a dashboard, and monitoring, enough to run a
 handful of server-rendered apps from Docker Hub images behind HTTPS.
 
@@ -51,4 +53,5 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/commits/main
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.1.0
