@@ -1,5 +1,4 @@
 ---
-
 title: Apps and ops on two servers
 number: 1
 status: accepted

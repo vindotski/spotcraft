@@ -1,5 +1,4 @@
 ---
-
 title: Hetzner ARM servers, deploy user only, one first-boot template
 number: 10
 status: accepted

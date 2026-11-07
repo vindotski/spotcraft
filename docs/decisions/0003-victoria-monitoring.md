@@ -1,5 +1,4 @@
 ---
-
 title: VictoriaMetrics and VictoriaLogs for monitoring
 number: 3
 status: accepted

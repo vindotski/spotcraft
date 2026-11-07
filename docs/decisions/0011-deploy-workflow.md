@@ -1,5 +1,4 @@
 ---
-
 title: Spotcraft deploys itself with a manual GitHub workflow over SSH
 number: 11
 status: accepted

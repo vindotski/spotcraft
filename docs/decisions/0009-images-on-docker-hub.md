@@ -1,5 +1,4 @@
 ---
-
 title: Multi-arch images on Docker Hub, built by CI
 number: 9
 status: accepted

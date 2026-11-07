@@ -1,5 +1,4 @@
 ---
-
 title: Hardening from the v0.1.0 audit
 number: 12
 status: accepted

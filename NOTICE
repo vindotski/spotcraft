@@ -1,0 +1,8 @@
+Spotcraft
+Copyright 2026 Ivan Vinski
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The agent skills vendored in .claude/skills/ are third-party works under their own
+licenses (MIT, Apache-2.0, MPL-2.0); each skill folder carries its LICENSE, and
+skills-lock.json records the source and license of every one.

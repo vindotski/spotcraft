@@ -48,5 +48,13 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["docs/decisions/0*.md"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ]
 }

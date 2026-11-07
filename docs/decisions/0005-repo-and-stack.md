@@ -1,5 +1,4 @@
 ---
-
 title: One pnpm monorepo: SvelteKit and Fastify
 number: 5
 status: accepted

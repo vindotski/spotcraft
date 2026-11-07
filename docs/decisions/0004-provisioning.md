@@ -1,5 +1,4 @@
 ---
-
 title: Generic VPS bootstrap, optional Hetzner module
 number: 4
 status: accepted

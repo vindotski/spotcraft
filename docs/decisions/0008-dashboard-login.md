@@ -1,5 +1,4 @@
 ---
-
 title: Dashboard login with one admin password
 number: 8
 status: accepted

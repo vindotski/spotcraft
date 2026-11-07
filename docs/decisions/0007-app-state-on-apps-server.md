@@ -1,5 +1,4 @@
 ---
-
 title: App state lives on the apps server; agent API
 number: 7
 status: accepted

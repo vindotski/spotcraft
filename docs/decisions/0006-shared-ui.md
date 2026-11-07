@@ -1,5 +1,4 @@
 ---
-
 title: Shared UI package with shadcn-svelte
 number: 6
 status: accepted

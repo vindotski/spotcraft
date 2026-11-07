@@ -30,6 +30,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm check:versions
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
@@ -91,7 +92,7 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # main → latest; v1.2.3 → 1.2.3, 1.2 and 1; every build → sha-abc1234.
+      # main → latest; v1.2.3 → 1.2.3, 1.2 and 1 (no major tag for v0.x); every build → sha-abc1234.
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
@@ -100,11 +101,14 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            # No bare major tag before 1.0 (a "0" tag would mean nothing stable).
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
             type=sha,format=short
           labels: |
             org.opencontainers.image.title=spotcraft-${{ matrix.image }}
             org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.source=https://github.com/vindotski/spotcraft
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

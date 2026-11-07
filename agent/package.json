@@ -1,7 +1,8 @@
 {
   "name": "@spotcraft/agent",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.ts",

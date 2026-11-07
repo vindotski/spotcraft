@@ -1,5 +1,4 @@
 ---
-
 title: A small agent deploys apps
 number: 2
 status: accepted
