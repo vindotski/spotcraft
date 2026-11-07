@@ -6,6 +6,8 @@
 
 # Only key logins, and only as the deploy user.
 disable_root: true
+disable_root_opts: >-
+  no-port-forwarding,no-agent-forwarding,no-X11-forwarding,command="echo 'Log in as deploy, not root.';exit 142"
 ssh_pwauth: false
 
 users:
