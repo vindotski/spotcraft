@@ -7,15 +7,20 @@ import { AgentError, type Apps } from './apps.ts'
 export interface BuildOptions {
   token: string
   apps: Apps
+  /** Client addresses allowed to call the agent; empty allows any (tests, local runs). */
+  allowedIps?: string[]
   logger?: FastifyServerOptions['logger']
 }
+
+/** `::ffff:10.0.0.3` (an IPv4 client on a dual-stack socket) is `10.0.0.3`. */
+const normalizeIp = (ip: string) => (ip.startsWith('::ffff:') ? ip.slice(7) : ip)
 
 type AppBody = Omit<AppSpec, 'name'>
 type NameParams = { name: string }
 
 const digest = (value: string) => createHash('sha256').update(value).digest()
 
-export function buildApp({ token, apps, logger = false }: BuildOptions) {
+export function buildApp({ token, apps, allowedIps = [], logger = false }: BuildOptions) {
   const app = Fastify({
     logger,
     bodyLimit: 256 * 1024,
@@ -23,6 +28,17 @@ export function buildApp({ token, apps, logger = false }: BuildOptions) {
     ajv: { customOptions: { removeAdditional: false } },
   })
   const expected = digest(`Bearer ${token}`)
+  // Loopback is the container itself (its health check); nothing outside can reach it.
+  const allowed = new Set([...allowedIps.map(normalizeIp), '127.0.0.1', '::1'])
+
+  // Only the dashboard's server may talk to the agent at all: a hosted app's container can
+  // reach this port through the host, and must be turned away before the token is checked.
+  app.addHook('onRequest', async (request, reply) => {
+    if (allowedIps.length > 0 && !allowed.has(normalizeIp(request.ip))) {
+      request.log.warn({ ip: request.ip }, 'refused: address not allowed')
+      return reply.code(403).send({ error: 'Forbidden' })
+    }
+  })
 
   // Every route but /health needs the dashboard's token. Comparing fixed-length digests in
   // constant time leaks neither the token nor its length.

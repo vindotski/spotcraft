@@ -118,3 +118,24 @@ jobs:
           sbom: ${{ env.PUSH == 'true' }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+      # Scan what was just built (amd64, from the same cache): fail on HIGH/CRITICAL issues
+      # that have a fix, so an update is waiting. Unfixable base-image CVEs don't block.
+      - name: Load the image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          load: true
+          tags: scan/spotcraft-${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.image }}
+      - name: Scan for fixable vulnerabilities
+        env:
+          TRIVY: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+          IMAGE: scan/spotcraft-${{ matrix.image }}:ci
+        run: |
+          docker save -o image.tar "$IMAGE"
+          docker run --rm -v "$PWD/image.tar:/image.tar:ro" -v "$PWD/.trivyignore.yaml:/.trivyignore.yaml:ro" \
+            "$TRIVY" image --quiet --input /image.tar --ignorefile /.trivyignore.yaml \
+            --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1

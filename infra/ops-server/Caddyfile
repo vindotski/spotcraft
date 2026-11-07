@@ -1,5 +1,30 @@
 # HTTPS for the dashboard (Let's Encrypt, automatic).
+{
+	servers {
+		# Slow clients can't hold connections open.
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 2m
+		}
+	}
+}
+
 {$DASHBOARD_DOMAIN} {
 	encode zstd gzip
+
+	# The dashboard only takes forms (logins, app settings).
+	request_body {
+		max_size 1MB
+	}
+
+	# The dashboard sends its own CSP, X-Frame-Options and Cache-Control.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
 	reverse_proxy dashboard:3000
 }

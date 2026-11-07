@@ -15,6 +15,11 @@ Files: `compose.yaml`, `scrape.yaml` (vmagent targets), `Caddyfile`, `.env.examp
 (copy to `.env`). A fresh server is prepared by [`../cloud-init.yaml`](../cloud-init.yaml) with
 `role` set to `ops`.
 
+Caddy adds HSTS and security headers, limits request bodies to 1 MB and times out slow
+clients. Every service runs without Linux capabilities (Caddy keeps `NET_BIND_SERVICE`), with
+`no-new-privileges`, a read-only root filesystem where possible, memory limits and health
+checks. The network has IPv6 on, so the dashboard sees IPv6 visitors' real addresses.
+
 Logs are read through the agent (`docker logs`); VictoriaLogs comes after the MVP.
 
 Current state: runs end to end (checked locally with both stacks side by side); the

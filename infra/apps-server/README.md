@@ -14,6 +14,11 @@ Hosted apps join the `spotcraft-edge` network; each has a site block in `sites/`
 Files: `compose.yaml`, `Caddyfile`, `.env.example` (copy to `.env`). A fresh server is prepared
 by [`../cloud-init.yaml`](../cloud-init.yaml) with `role` set to `apps`.
 
+Every service runs without Linux capabilities (Caddy keeps `NET_BIND_SERVICE`), with
+`no-new-privileges`, a read-only root filesystem, and memory and process limits; Caddy and
+the exporters have health checks. The `spotcraft-edge` network has IPv6 on, so Caddy sees
+IPv6 visitors' real addresses. The agent only answers the ops server (`OPS_PRIVATE_IP`).
+
 cAdvisor gets the Docker and containerd sockets (read-only) to name containers and read their
 Compose labels; the dashboard finds each app's metrics by `com.docker.compose.project`.
 

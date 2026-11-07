@@ -5,10 +5,23 @@
 # Third-party images are pinned by digest; bump the version and digest together.
 name: spotcraft-ops
 
+# Every service: no Linux capabilities unless it adds one, no privilege escalation.
+x-hardened: &hardened
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+
 services:
   caddy:
+    <<: *hardened
     image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
-    restart: unless-stopped
+    cap_add: [NET_BIND_SERVICE] # ports 80 and 443
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    mem_limit: 256m
     ports:
       - "80:80"
       - "443:443"
@@ -19,10 +32,20 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   dashboard:
+    <<: *hardened
     image: ${SPOTCRAFT_DASHBOARD_IMAGE:-vindotski/spotcraft-dashboard}:${SPOTCRAFT_TAG:-latest}
-    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    mem_limit: 512m
     environment:
       AGENT_URL: http://${APPS_PRIVATE_IP:?set APPS_PRIVATE_IP in .env}:4000
       AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
@@ -31,36 +54,62 @@ services:
       VICTORIAMETRICS_URL: http://victoriametrics:8428
     volumes:
       - probes:/probes # uptime-probe targets the dashboard writes for vmagent
-    read_only: true
-    tmpfs:
-      - /tmp:size=16m,noexec,nosuid,nodev
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: 512m
 
   victoriametrics:
+    <<: *hardened
     image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
-    restart: unless-stopped
+    read_only: true
+    # VictoriaMetrics sizes its caches from this limit (60% by default).
+    mem_limit: 1g
     command: ["-storageDataPath=/storage", "-retentionPeriod=90d"]
     volumes:
       - vm_data:/storage
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8428/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   vmagent:
+    <<: *hardened
     image: victoriametrics/vmagent:v1.155.0@sha256:8e3c03905be15bba8312d4868e8ae6f9fc2fefee0a41d544472034249ca42bb4
-    restart: unless-stopped
+    read_only: true
+    # Buffers samples here while VictoriaMetrics is unreachable.
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+    mem_limit: 256m
     command:
       - -promscrape.config=/etc/vmagent/scrape.yaml
       - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+      - -remoteWrite.tmpDataPath=/tmp/vmagent
     environment:
       APPS_PRIVATE_IP: ${APPS_PRIVATE_IP}
     volumes:
       - ./scrape.yaml:/etc/vmagent/scrape.yaml:ro
       - probes:/probes:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8429/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   blackbox:
+    <<: *hardened
     image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
-    restart: unless-stopped
+    user: "65534:65534" # nobody; it only makes outgoing requests
+    read_only: true
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9115/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# IPv6 on, so that Docker forwards IPv6 visitors to Caddy with kernel NAT and their real
+# addresses reach the dashboard (its login lockout is per address).
+networks:
+  default:
+    enable_ipv6: true
 
 volumes:
   probes:

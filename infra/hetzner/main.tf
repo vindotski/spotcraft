@@ -74,6 +74,7 @@ resource "hcloud_server" "main" {
   firewall_ids       = [hcloud_firewall.main.id]
   delete_protection  = var.protect_servers
   rebuild_protection = var.protect_servers
+  backups            = each.key == "apps" && var.apps_server_backups
   labels             = merge(local.labels, { role = each.key })
 
   user_data = templatefile("${path.module}/../cloud-init.yaml", {

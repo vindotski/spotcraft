@@ -1,7 +1,8 @@
 # @spotcraft/agent
 
 Fastify service on the **apps server** that deploys apps when the dashboard asks. It listens
-on the private network only and requires a bearer token on every route but `/health`.
+on the private network only, answers only the addresses in `AGENT_ALLOWED_IPS` (plus its own
+loopback, for the health check), and requires a bearer token on every route but `/health`.
 
 The files it writes are the only record of which apps exist:
 
@@ -46,6 +47,9 @@ and reloads Caddy. If any step fails, the previous version's files are restored 
 again (a new app is removed), and the response carries the error and the command output.
 Changes run one at a time.
 
+A `www.` site redirecting to the domain is added only for root domains (two labels, e.g.
+`tagtape.app`); subdomains get none, so Caddy never requests certificates for unused names.
+
 Every app container gets: no Linux capabilities, `no-new-privileges`, memory/CPU/pids
 limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy reaches it as
 `app-<name>`.
@@ -61,8 +65,10 @@ limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy
 | `CADDY_CONTAINER` | `spotcraft-apps-caddy-1` | container reloaded after site changes |
 | `LOG_LEVEL`       | `info`                   | log level                             |
 
-The image runs as the unprivileged `node` user and reaches Docker through the socket's
-group (`group_add` with `DOCKER_GID`). Mounting the Docker socket still makes the agent
+The image is distroless Node 26 (no shell or package manager) plus the static Docker CLI and
+Compose plugin. It runs as uid 1000 and reaches Docker through the socket's group (`group_add`
+with `DOCKER_GID`); the Docker CLI keeps its config in `/tmp` so the root filesystem can be
+read-only. Mounting the Docker socket still makes the agent
 equivalent to root on the server; the private-network binding and the token protect it.
 
 ```sh

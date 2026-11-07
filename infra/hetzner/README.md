@@ -53,6 +53,7 @@ somewhere safe: without it, OpenTofu no longer knows it manages these servers.
 | `ops_server_type`       | `cax11`        | ops server size                                  |
 | `ssh_source_ips`        | anywhere       | who may reach SSH (GitHub Actions needs it)      |
 | `protect_servers`       | `true`         | Hetzner delete and rebuild protection            |
+| `apps_server_backups`   | `false`        | daily Hetzner backups of the apps server (+20%)  |
 
 To remove everything: set `protect_servers = false`, `tofu apply`, then `tofu destroy`.
 

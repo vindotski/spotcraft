@@ -97,6 +97,31 @@ describe('agent', () => {
     assert.deepEqual(steps.filter(Boolean), ['pull', 'up', 'reload'])
   })
 
+  it('turns away clients that are not on the allowlist, before the token check', async () => {
+    const guarded = buildApp({
+      token: TOKEN,
+      apps: new Apps(new Store(dir), docker.run, 'caddy-test'),
+      allowedIps: ['10.0.0.3'],
+    })
+    const from = (remoteAddress: string) =>
+      guarded.inject({ url: '/apps', headers: auth, remoteAddress })
+    assert.equal((await from('172.18.0.5')).statusCode, 403, 'an app container')
+    assert.equal((await from('10.0.0.3')).statusCode, 200, 'the ops server')
+    assert.equal((await from('::ffff:10.0.0.3')).statusCode, 200, 'the ops server, dual-stack')
+    assert.equal((await from('127.0.0.1')).statusCode, 200, 'the container itself (health check)')
+    await guarded.close()
+  })
+
+  it('adds a www. redirect for root domains only', async () => {
+    await app.inject({ method: 'PUT', url: '/apps/root', headers: auth, payload: spec })
+    const sub = { ...spec, domain: 'app.vin.ski' }
+    await app.inject({ method: 'PUT', url: '/apps/sub', headers: auth, payload: sub })
+    assert.match(await readFile(join(dir, 'sites/root.caddy'), 'utf8'), /^www\.tagtape\.app \{$/m)
+    const subSite = await readFile(join(dir, 'sites/sub.caddy'), 'utf8')
+    assert.match(subSite, /^app\.vin\.ski \{$/m)
+    assert.doesNotMatch(subSite, /www\./)
+  })
+
   it('rejects invalid names, domains, images, reserved names and unknown fields', async () => {
     const put = (name: string, payload: object) =>
       app.inject({ method: 'PUT', url: `/apps/${name}`, headers: auth, payload })

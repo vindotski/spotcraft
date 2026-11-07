@@ -16,3 +16,4 @@ that supersedes the old one; old records are never rewritten.
 | 0009 | [Multi-arch images on Docker Hub, built by CI](0009-images-on-docker-hub.md)               | accepted |
 | 0010 | [Hetzner ARM servers, deploy user only, one first-boot template](0010-hetzner-servers.md)  | accepted |
 | 0011 | [Spotcraft deploys itself with a manual GitHub workflow over SSH](0011-deploy-workflow.md) | accepted |
+| 0012 | [Hardening from the v0.1.0 audit](0012-hardening-before-v0-1.md)                           | accepted |

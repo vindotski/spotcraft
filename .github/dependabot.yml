@@ -1,0 +1,36 @@
+# Weekly dependency updates, grouped per ecosystem so they arrive as a handful of PRs.
+# New releases wait a day before Dependabot proposes them (like pnpm's minimumReleaseAge).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 1 }
+    groups:
+      npm: { patterns: ["*"] }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 1 }
+    groups:
+      actions: { patterns: ["*"] }
+
+  - package-ecosystem: docker
+    directories: [/agent, /apps/dashboard]
+    schedule: { interval: weekly }
+    cooldown: { default-days: 1 }
+    groups:
+      base-images: { patterns: ["*"] }
+
+  - package-ecosystem: docker-compose
+    directories: [/infra/apps-server, /infra/ops-server]
+    schedule: { interval: weekly }
+    cooldown: { default-days: 1 }
+    groups:
+      server-images: { patterns: ["*"] }
+
+  - package-ecosystem: terraform
+    directory: /infra/hetzner
+    schedule: { interval: weekly }
+    cooldown: { default-days: 1 }

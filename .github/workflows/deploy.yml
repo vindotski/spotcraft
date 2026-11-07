@@ -31,6 +31,7 @@ jobs:
       APPS_HOST: ${{ vars.APPS_HOST }}
       OPS_HOST: ${{ vars.OPS_HOST }}
       APPS_PRIVATE_IP: ${{ vars.APPS_PRIVATE_IP || '10.0.0.2' }}
+      OPS_PRIVATE_IP: ${{ vars.OPS_PRIVATE_IP || '10.0.0.3' }}
       DASHBOARD_DOMAIN: ${{ vars.DASHBOARD_DOMAIN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -76,8 +77,8 @@ jobs:
         run: |
           scp infra/apps-server/compose.yaml infra/apps-server/Caddyfile apps:/opt/spotcraft/
           {
-            printf 'export ROLE=apps SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q PRIVATE_IP=%q AGENT_TOKEN=%q\n' \
-              "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$AGENT_TOKEN"
+            printf 'export ROLE=apps SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q PRIVATE_IP=%q OPS_PRIVATE_IP=%q AGENT_TOKEN=%q\n' \
+              "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$OPS_PRIVATE_IP" "$AGENT_TOKEN"
             cat infra/remote-deploy.sh
           } | ssh apps bash -s
 

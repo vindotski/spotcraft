@@ -26,6 +26,19 @@ packages:
   - unattended-upgrades
 
 write_files:
+  # Modern SSH algorithms only (the deploy script keeps this file in step on later deploys).
+  - path: /etc/ssh/sshd_config.d/50-spotcraft.conf
+    content: |
+      # Managed by Spotcraft (infra/remote-deploy.sh and infra/cloud-init.yaml); edits are overwritten.
+      # Modern algorithms only; Debian's defaults also offer NIST curves and SHA-1 MACs as fallbacks.
+      KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org
+      HostKeyAlgorithms ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256
+      PubkeyAcceptedAlgorithms ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,sk-ssh-ed25519@openssh.com,rsa-sha2-512,rsa-sha2-256
+      Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes128-ctr
+      MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
   # Container logs rotate; containers keep running while the Docker daemon restarts.
   - path: /etc/docker/daemon.json
     content: |
@@ -63,4 +76,5 @@ runcmd:
   - ufw allow 443
   - ufw allow from 10.0.0.0/16
   - ufw --force enable
+  - systemctl reload ssh
   - echo "spotcraft ${role} server ready" > /var/log/spotcraft-ready

@@ -4,6 +4,12 @@ variable "apps_server_type" {
   default     = "cax21"
 }
 
+variable "apps_server_backups" {
+  description = "Hetzner's daily backups of the apps server (7 kept, +20% of its price). It holds the app list (/opt/spotcraft/apps)."
+  type        = bool
+  default     = false
+}
+
 variable "deploy_ssh_public_key" {
   description = "Public key of the deploy user on both servers (one line, e.g. \"ssh-ed25519 AAAA... spotcraft-deploy\")."
   type        = string

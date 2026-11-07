@@ -6,7 +6,12 @@ import { Store } from './store.ts'
 
 const config = loadConfig()
 const apps = new Apps(new Store(config.dataDir), execRunner, config.caddyContainer)
-const app = buildApp({ token: config.token, apps, logger: { level: config.logLevel } })
+const app = buildApp({
+  token: config.token,
+  apps,
+  allowedIps: config.allowedIps,
+  logger: { level: config.logLevel },
+})
 
 // Finish in-flight requests (a deploy may be running) before exiting on stop.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

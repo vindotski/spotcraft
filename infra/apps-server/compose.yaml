@@ -4,10 +4,23 @@
 # Third-party images are pinned by digest; bump the version and digest together.
 name: spotcraft-apps
 
+# Every service: no Linux capabilities unless it adds one, no privilege escalation.
+x-hardened: &hardened
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+
 services:
   caddy:
+    <<: *hardened
     image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
-    restart: unless-stopped
+    cap_add: [NET_BIND_SERVICE] # ports 80 and 443
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    mem_limit: 512m
     ports:
       - "80:80"
       - "443:443"
@@ -18,14 +31,27 @@ services:
       - caddy_data:/data # certificates: keep across redeploys
       - caddy_config:/config
     networks: [edge]
+    # The admin API only answers once the config has loaded.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   agent:
+    <<: *hardened
     image: ${SPOTCRAFT_AGENT_IMAGE:-vindotski/spotcraft-agent}:${SPOTCRAFT_TAG:-latest}
-    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    mem_limit: 256m
     environment:
       HOST: 0.0.0.0
       PORT: 4000
       AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
+      # Only the ops server's dashboard may call the agent; hosted apps are turned away.
+      AGENT_ALLOWED_IPS: ${OPS_PRIVATE_IP:-10.0.0.3}
       DATA_DIR: /opt/spotcraft
       CADDY_CONTAINER: spotcraft-apps-caddy-1
     # Reaches Docker through the socket's group instead of running as root.
@@ -34,24 +60,33 @@ services:
       - "${PRIVATE_IP:?set PRIVATE_IP in .env}:4000:4000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      # Same paths as on the host; owned by uid 1000 (the image's node user).
+      # Same paths as on the host; owned by uid 1000, the agent's user.
       - ./apps:/opt/spotcraft/apps # app.json + compose.yaml per app
       - ./sites:/opt/spotcraft/sites # Caddy site block per app
 
   node-exporter:
+    <<: *hardened
     image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
-    restart: unless-stopped
+    read_only: true
+    mem_limit: 128m
     command: ["--path.rootfs=/host"]
     pid: host
     ports:
       - "${PRIVATE_IP}:9100:9100"
     volumes:
       - /:/host:ro,rslave
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
+  # cAdvisor reads every container's cgroups and the Docker/containerd state, read-only.
   cadvisor:
+    <<: *hardened
     image: ghcr.io/google/cadvisor:v0.60.6@sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
-    restart: unless-stopped
-    privileged: true
+    read_only: true
+    mem_limit: 256m
     devices:
       - /dev/kmsg
     ports:
@@ -66,10 +101,13 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
 
-# Hosted apps join this network so Caddy can reach them by service name.
+# Hosted apps join this network so Caddy can reach them by service name. IPv6 on, so that
+# Docker forwards IPv6 visitors with kernel NAT and Caddy sees their real addresses (on an
+# IPv4-only network a user-space proxy answers them and they all look like one address).
 networks:
   edge:
     name: spotcraft-edge
+    enable_ipv6: true
 
 volumes:
   caddy_data:

@@ -1,0 +1,11 @@
+# Known findings CI's image scan accepts for now. Each entry says why and expires, so it is
+# looked at again instead of being forgotten.
+vulnerabilities:
+  - id: CVE-2026-78661
+    purls:
+      - pkg:golang/golang.org/x/net
+    statement: >-
+      In the Docker CLI/Compose binaries the agent copies from docker:29.9.3-cli; fixed in
+      golang.org/x/net 0.62.0, which no Docker CLI release ships yet. The agent never parses
+      HTML with it. Remove once Dependabot bumps docker:*-cli.
+    expired_at: 2027-01-31

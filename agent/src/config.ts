@@ -8,6 +8,8 @@ export interface Config {
   dataDir: string
   /** Container whose Caddy is reloaded after a site file changes. */
   caddyContainer: string
+  /** Client addresses allowed to call the agent (the dashboard's server); empty allows any. */
+  allowedIps: string[]
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -20,5 +22,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     token,
     dataDir: env.DATA_DIR ?? '/opt/spotcraft',
     caddyContainer: env.CADDY_CONTAINER ?? 'spotcraft-apps-caddy-1',
+    allowedIps: (env.AGENT_ALLOWED_IPS ?? '')
+      .split(',')
+      .map((ip) => ip.trim())
+      .filter(Boolean),
   }
 }

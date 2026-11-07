@@ -1,4 +1,7 @@
 # vmagent scrape config. %{VAR} is expanded from the environment by vmagent.
+global:
+  scrape_interval: 30s
+
 scrape_configs:
   - job_name: node
     static_configs:
