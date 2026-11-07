@@ -26,10 +26,9 @@ services:
       PORT: 3000
       ORIGIN: https://${DASHBOARD_DOMAIN}
       AGENT_URL: http://${APPS_PRIVATE_IP:?set APPS_PRIVATE_IP in .env}:4000
+      AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       VICTORIALOGS_URL: http://victorialogs:9428
-    volumes:
-      - dashboard_data:/data # SQLite: the project list
 
   victoriametrics:
     image: victoriametrics/victoria-metrics:v1.155.0
@@ -66,6 +65,5 @@ services:
 volumes:
   caddy_data:
   caddy_config:
-  dashboard_data:
   vm_data:
   vl_data:

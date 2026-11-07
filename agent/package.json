@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch src/index.ts",
     "start": "node src/index.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "node --test 'test/**/*.test.ts'"
   },
   "dependencies": {
     "fastify": "^5.12.8"

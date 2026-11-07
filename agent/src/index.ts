@@ -1,11 +1,22 @@
-import Fastify from 'fastify'
+import { buildApp } from './app.ts'
+import { Apps } from './apps.ts'
+import { loadConfig } from './config.ts'
+import { execRunner } from './runner.ts'
+import { Store } from './store.ts'
 
-// Listens on the private network only; the dashboard on the ops server is its sole client.
-const host = process.env.HOST ?? '127.0.0.1'
-const port = Number(process.env.PORT ?? 4000)
+const config = loadConfig()
+const apps = new Apps(new Store(config.dataDir), execRunner, config.caddyContainer)
+const app = buildApp({ token: config.token, apps, logger: { level: config.logLevel } })
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } })
+// Finish in-flight requests (a deploy may be running) before exiting on stop.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    app.log.info({ signal }, 'shutting down')
+    app.close().then(
+      () => process.exit(0),
+      () => process.exit(1),
+    )
+  })
+}
 
-app.get('/health', async () => ({ ok: true }))
-
-await app.listen({ host, port })
+await app.listen({ host: config.host, port: config.port })

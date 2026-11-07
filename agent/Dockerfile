@@ -1,6 +1,9 @@
 # Spotcraft agent: runs on the apps server, reachable only over the private network.
 # Build from the repository root: docker build -f agent/Dockerfile .
-# Base images to be pinned by digest when the agent does real work.
+# Base images to be pinned by digest when the CI image workflow lands.
+
+# The Docker CLI and Compose plugin (static binaries) from the official image.
+FROM docker:29.9.3-cli AS docker-cli
 
 FROM node:26-slim AS build
 RUN npm install --global pnpm@12.4.1
@@ -10,10 +13,14 @@ RUN pnpm install --frozen-lockfile --filter @spotcraft/agent \
   && pnpm --filter @spotcraft/agent deploy --prod /out
 
 FROM node:26-slim
+RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 WORKDIR /app
 COPY --from=build /out ./
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=4000
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=4000 DATA_DIR=/opt/spotcraft
 EXPOSE 4000
+# Unprivileged; reaches Docker through the socket's group (group_add in compose).
 USER node
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD ["node", "-e", "fetch('http://127.0.0.1:' + process.env.PORT + '/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
