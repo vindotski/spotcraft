@@ -20,6 +20,9 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 - **`spotcraft dev`** (`packages/cli`): the apps server's Postgres and app database setup on
   your machine, for local development (`start`, `stop`, `status`, `env --write`, `reset`,
   `migrate`).
+- **Backend kit** (`packages/kit`): guest accounts for server-rendered apps on Better Auth,
+  server-only (an httpOnly session cookie, no auth routes), with a guest limit per client
+  address and a check of the `auth` schema version.
 - **Dashboard**: a Database checkbox when adding or editing an app, the database in the app's
   settings, and "Also delete its database" when removing it.
 

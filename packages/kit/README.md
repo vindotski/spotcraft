@@ -1,15 +1,57 @@
 # @spotcraft/kit
 
-The backend kit for apps hosted on Spotcraft ([ADR 0016](../../docs/decisions/0016-backend-kit.md)).
-So far it holds the `auth` schema and the code that gives an app its own database
-([ADR 0015](../../docs/decisions/0015-shared-postgres.md)). Guest accounts for apps come next.
+The backend kit for server-rendered apps hosted on Spotcraft
+([ADR 0016](../../docs/decisions/0016-backend-kit.md)). For now it gives an app **guest
+accounts**: a visitor gets an account without signing up, and the app keeps their data under
+its id. It also holds the `auth` schema and the code that gives an app its own database
+([ADR 0015](../../docs/decisions/0015-shared-postgres.md)).
 In the workspace, Node runs the TypeScript source through the `source` export condition
 (`node --conditions=source`, `customConditions` in `tsconfig.json`). Anything that installs the
 kit into `node_modules`, like the agent's image, uses the build: `pnpm --filter @spotcraft/kit
 build` writes JavaScript, type declarations and the migrations to `dist/`.
 
+## Guests
+
+```ts
+// src/lib/server/backend.ts (server code only)
+import { backendFromEnv } from '@spotcraft/kit'
+
+export const backend = backendFromEnv() // DATABASE_URL, AUTH_SECRET, PUBLIC_URL
+```
+
+```ts
+// in a request handler: the visitor's guest, created on the first request
+const { guest, headers } = await backend.guest(request, { clientAddress })
+// …use guest.id as the owner of the app's rows, then send `headers` with the response:
+// they set or refresh the session cookie.
+```
+
+- **Server-only.** No auth routes are mounted and there is no client SDK. The browser only
+  carries the session cookie (`httpOnly`, `SameSite=Lax`, `Secure` on https, path `/`).
+  Bundling the kit for the browser fails: its `browser` export has nothing in it and throws.
+- **Sessions last a year** and renew daily on use, so a returning visitor keeps their data.
+  Clearing cookies or switching device starts a new guest; until sign-up exists, the old data
+  can't be reached again.
+- **New guests are limited** to 30 per client address per 10 minutes (`guestLimit`), in
+  memory. Over the limit, `guest()` throws `GuestLimitError` (`status` 429,
+  `retryAfterSeconds`). Returning guests are never limited.
+- **The schema version is checked** on first use. Against an older `auth` schema, `guest()`
+  fails with "Upgrade Spotcraft (locally: spotcraft dev migrate)".
+- `backendFromEnv` stops the app at start with the variable's name if `DATABASE_URL`,
+  `AUTH_SECRET` (32+ characters) or `PUBLIC_URL` (https, or http on localhost) is wrong.
+  `createBackend({ databaseUrl, baseURL, secret, guestLimit })` takes them directly.
+- `backend.db` is Drizzle over the same database, for the app's own tables. `close()` ends the
+  connections.
+
+Under the hood it is Better Auth with only its anonymous plugin, telemetry off. Guests get the
+name "Anonymous" and a placeholder email (`…@anonymous.placeholder.invalid`); Postgres
+generates their `uuid` ids.
+
+## Exports
+
 | Export        | What                                                                      |
 | ------------- | ------------------------------------------------------------------------- |
+| `.`           | `createBackend`, `backendFromEnv`, `GuestLimitError`, the `auth` tables   |
 | `./schema`    | Drizzle definitions of the `auth` tables, the SQL migrations, the version |
 | `./provision` | `provision`, `purge`, `migrate`, `authSchemaVersion`, `appDatabaseName`   |
 

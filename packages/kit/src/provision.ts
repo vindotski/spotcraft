@@ -43,7 +43,7 @@ async function withClient<T>(
 }
 
 /** The `auth` schema version a database is at; 0 when it has none. */
-export async function authSchemaVersion(client: pg.Client): Promise<number> {
+export async function authSchemaVersion(client: pg.ClientBase): Promise<number> {
   const { rows } = await client.query<{ found: boolean }>(
     `SELECT to_regclass('auth.kit_migrations') IS NOT NULL AS found`,
   )
