@@ -9,3 +9,20 @@ vulnerabilities:
       golang.org/x/net 0.62.0, which no Docker CLI release ships yet. The agent never parses
       HTML with it. Remove once Dependabot bumps docker:*-cli.
     expired_at: 2027-01-31
+  - id: CVE-2026-85091
+    purls:
+      - pkg:deb/debian/zlib1g
+    statement: >-
+      zlib1g in the distroless Node base image (Debian 13); fixed in Debian
+      1:1.3.dfsg+really1.3.1-1+deb13u1, but no distroless nodejs26-debian13 build ships it yet.
+      Nothing in the images loads it: Node is built with its own bundled zlib (not linked
+      against libz), and the agent's Docker CLI and Compose are static Go binaries. Remove
+      once Dependabot bumps the distroless digest.
+    expired_at: 2026-12-08
+  - id: CVE-2026-76844
+    purls:
+      - pkg:deb/debian/zlib1g
+    statement: >-
+      The same zlib1g package and fix as CVE-2026-85091 above; not loaded by anything in the
+      images. Remove with it.
+    expired_at: 2026-12-08
