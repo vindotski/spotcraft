@@ -10,6 +10,13 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-08
+
+Databases for hosted apps, and a backend kit that gives server-rendered apps guest accounts:
+one Postgres on the apps server with a database per app, the `spotcraft dev` command to run
+the same setup locally, and the dashboard to see and delete an app's users. **Before
+deploying, add the `POSTGRES_AGENT_PASSWORD` secret** (see Changed).
+
 ### Added
 
 - **Postgres** on the apps server (`postgres` service, Postgres 18), the base for databases for
@@ -85,5 +92,6 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/vindotski/spotcraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.1.0
