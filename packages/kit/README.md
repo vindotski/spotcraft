@@ -15,6 +15,9 @@ npm install @spotcraft/kit                  # same version as the Spotcraft you 
 npm install --save-dev spotcraft            # the local stack: npx spotcraft dev start
 ```
 
+The step-by-step guide for a SvelteKit app, locally and deployed, is
+[Guest accounts with the backend kit](https://github.com/vindotski/spotcraft/blob/main/docs/guides/backend-kit.md).
+
 ## Guests
 
 ```ts

@@ -19,6 +19,8 @@ npx spotcraft dev env --write      # add DATABASE_URL and AUTH_SECRET to .env (o
 | `dev reset [--yes]` | deletes this app's database and creates it empty again (asks first)                   |
 | `dev migrate`       | brings this app's database up to date after upgrading the CLI                         |
 
+How an app uses it with the kit: [Guest accounts with the backend kit](https://github.com/vindotski/spotcraft/blob/main/docs/guides/backend-kit.md).
+
 The app name comes from `--name`, or from the `name` in `package.json` made into an app name
 (`@acme/Blog_API` → `blog-api`). Its database is `app_<name>`, with dashes as underscores.
 

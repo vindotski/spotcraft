@@ -18,6 +18,7 @@ const sources = new Map(
 const pageFiles = new Map<string, string>([
   ['getting-started', 'docs/getting-started.md'],
   ['security', 'docs/security.md'],
+  ['guides/backend-kit', 'docs/guides/backend-kit.md'],
   ['changelog', 'CHANGELOG.md'],
   ['decisions', 'docs/decisions/README.md'],
 ])
@@ -40,6 +41,7 @@ export interface DocPage {
 /** Pages in the sidebar, in reading order. */
 export const NAV = [
   { slug: 'getting-started', label: 'Getting started' },
+  { slug: 'guides/backend-kit', label: 'Guest accounts (kit)' },
   { slug: 'security', label: 'Security model' },
   { slug: 'decisions', label: 'Decisions' },
   { slug: 'changelog', label: 'Changelog' },

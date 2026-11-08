@@ -23,6 +23,8 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 - **npm packages**, published by CI on release tags with provenance: `@spotcraft/kit` and
   the CLI as `spotcraft` (`npx spotcraft dev start`). Their APIs join the public API
   ([ADR 0019](docs/decisions/0019-one-version-with-npm.md)).
+- **Guide**: [Guest accounts with the backend kit](docs/guides/backend-kit.md), for a SvelteKit
+  app locally and on Spotcraft.
 - **Backend kit** (`packages/kit`): guest accounts for server-rendered apps on Better Auth,
   server-only (an httpOnly session cookie, no auth routes), with a guest limit per client
   address and a check of the `auth` schema version.

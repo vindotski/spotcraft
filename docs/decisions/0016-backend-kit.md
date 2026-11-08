@@ -2,7 +2,7 @@
 title: A server-only backend kit, starting with guest accounts
 number: 16
 status: accepted
-implementation: planned
+implementation: done
 date: 2026-11-08
 supersedes: []
 superseded_by: []
