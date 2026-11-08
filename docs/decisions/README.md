@@ -19,3 +19,7 @@ that supersedes the old one; old records are never rewritten.
 | 0012 | [Hardening from the v0.1.0 audit](0012-hardening-before-v0-1.md)                           | accepted |
 | 0013 | [One Semantic Version for the whole project](0013-one-version.md)                          | accepted |
 | 0014 | [The website is static and hosted on Spotcraft itself](0014-website.md)                    | accepted |
+| 0015 | [One Postgres on the apps server, a database per app](0015-shared-postgres.md)             | accepted |
+| 0016 | [A server-only backend kit, starting with guest accounts](0016-backend-kit.md)             | accepted |
+| 0017 | [A local stack that matches the server](0017-local-stack.md)                               | accepted |
+| 0018 | [The dashboard lists and deletes an app's users](0018-user-management.md)                  | accepted |
