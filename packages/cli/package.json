@@ -1,0 +1,28 @@
+{
+  "name": "@spotcraft/cli",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "spotcraft": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "test": "node --conditions=source --test 'test/**/*.test.ts'",
+    "spotcraft": "node --conditions=source src/cli.ts"
+  },
+  "dependencies": {
+    "@spotcraft/kit": "workspace:*",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "typescript": "catalog:"
+  }
+}

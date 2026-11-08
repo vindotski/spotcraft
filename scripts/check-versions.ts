@@ -8,6 +8,7 @@ const files = [
   'agent/package.json',
   'apps/dashboard/package.json',
   'apps/site/package.json',
+  'packages/cli/package.json',
   'packages/kit/package.json',
   'packages/ui/package.json',
 ]
