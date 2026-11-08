@@ -9,19 +9,23 @@ The files it writes are the only record of which apps exist:
 ```
 /opt/spotcraft/apps/<name>/app.json      settings sent by the dashboard
 /opt/spotcraft/apps/<name>/compose.yaml  generated Compose file (JSON, valid YAML)
+/opt/spotcraft/apps/<name>/secrets.json  generated database password (mode 600, never returned)
 /opt/spotcraft/sites/<name>.caddy        generated Caddy site block
 ```
 
 ## API
 
-| Method | Path               | What                                                       |
-| ------ | ------------------ | ---------------------------------------------------------- |
-| GET    | `/health`          | `{ ok: true }`, no token needed                            |
-| GET    | `/apps`            | every app's settings plus `state`, `health`, `status`      |
-| GET    | `/apps/:name`      | one app, or 404                                            |
-| PUT    | `/apps/:name`      | create or update, then deploy; returns the app with status |
-| DELETE | `/apps/:name`      | stop and remove the app and its site; 204, or 404          |
-| GET    | `/apps/:name/logs` | last `?tail=` lines (default 200, max 5000), plain text    |
+| Method | Path                    | What                                                       |
+| ------ | ----------------------- | ---------------------------------------------------------- |
+| GET    | `/health`               | `{ ok: true }`, no token needed                            |
+| GET    | `/apps`                 | every app's settings plus `state`, `health`, `status`      |
+| GET    | `/apps/:name`           | one app, or 404                                            |
+| PUT    | `/apps/:name`           | create or update, then deploy; returns the app with status |
+| DELETE | `/apps/:name`           | stop and remove the app and its site; 204, or 404          |
+|        |                         | `?purge=true` also deletes its database and role           |
+| GET    | `/apps/:name/logs`      | last `?tail=` lines (default 200, max 5000), plain text    |
+| GET    | `/apps/:name/users`     | the app's users, newest first (`?limit=`, `?cursor=`)      |
+| DELETE | `/apps/:name/users/:id` | delete a user and what the app kept for them; 204, or 404  |
 
 `PUT` body (unknown fields are rejected):
 
@@ -35,9 +39,14 @@ The files it writes are the only record of which apps exist:
 | `memory`   | `512m`  | memory limit, `<n>m` or `<n>g`                            |
 | `cpus`     | `1`     | CPU limit                                                 |
 | `readOnly` | `true`  | read-only root filesystem with a 64 MB writable `/tmp`    |
+| `database` | `false` | its own Postgres database, given to it as `DATABASE_URL`  |
 
 App names: lower-case letters, digits and dashes, 2–32 characters; `caddy`, `agent`,
-`node-exporter` and `cadvisor` are reserved. A domain can belong to one app only.
+`node-exporter`, `cadvisor` and `postgres` are reserved. A domain can belong to one app only.
+
+Leaving out `database` in an update keeps the app's current setting (a new app gets none), so
+an older dashboard never takes a database away. With `database: true`, the app can't set
+`DATABASE_URL` itself; without it, it may point `DATABASE_URL` anywhere.
 
 ## Deploying
 
@@ -54,6 +63,41 @@ Every app container gets: no Linux capabilities, `no-new-privileges`, memory/CPU
 limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy reaches it as
 `app-<name>`.
 
+## App databases
+
+With `database: true`, a deploy first prepares the app's own role and database on the apps
+server's Postgres (`app_<name>`, with dashes as underscores), using
+[`@spotcraft/kit/provision`](../packages/kit/README.md). Only then are the files written, so a
+database that can't be prepared changes nothing (the error and Postgres's message come back
+as a 502). The password is generated on the first deploy and kept in `secrets.json`. The app
+gets `DATABASE_URL=postgres://app_<name>:…@postgres:5432/app_<name>`; it reaches Postgres on
+`spotcraft-edge`, and the agent reaches it on the internal `db` network.
+
+Removing an app keeps its database (and the data in it). `DELETE ?purge=true` drops the
+database and its role after the app is removed. To delete the database of an app that was
+already removed, add it again and remove it with `?purge=true`. Turning `database` off keeps the
+database too; the app only stops getting `DATABASE_URL`.
+
+When the agent starts, it brings every app database up to date: role settings, grants and the
+`auth` migrations of the kit it was built with. Postgres may still be starting, so failures
+are retried every 5 seconds for 3 minutes and logged.
+
+Without `POSTGRES_URL`, the agent runs as before, and asking for a database returns 409.
+
+## App users
+
+For an app with a database, the agent reads and deletes its users directly in the app's
+`auth` tables, which it owns ([ADR 0018](../docs/decisions/0018-user-management.md)). It works
+while the app is down.
+
+- `GET /apps/:name/users` returns `{ available, total, users, next }`. Each user has `id`,
+  `guest` (no sign-up), `createdAt` and `lastSeen` (their most recently used session, or
+  `null`). Pages hold `?limit=` users (default 50, max 200); pass `next` back as `?cursor=` for
+  the older ones. `available` is false if the database has no `auth` schema.
+- `DELETE /apps/:name/users/:id` (a uuid) deletes the user. Their sessions and the app's own
+  rows go with them through their foreign keys.
+- An app without a database answers 409; an unknown app, 404.
+
 ## Settings
 
 | Env               | Default                  | Meaning                               |
@@ -63,6 +107,7 @@ limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy
 | `PORT`            | `4000`                   | listen port                           |
 | `DATA_DIR`        | `/opt/spotcraft`         | holds `apps/` and `sites/`            |
 | `CADDY_CONTAINER` | `spotcraft-apps-caddy-1` | container reloaded after site changes |
+| `POSTGRES_URL`    | —                        | the agent's Postgres role (optional)  |
 | `LOG_LEVEL`       | `info`                   | log level                             |
 
 The image is distroless Node 26 (no shell or package manager) plus the static Docker CLI and
@@ -71,8 +116,12 @@ with `DOCKER_GID`); the Docker CLI keeps its config in `/tmp` so the root filesy
 read-only. Mounting the Docker socket still makes the agent
 equivalent to root on the server; the private-network binding and the token protect it.
 
+The workspace runs the kit's TypeScript source (the `spotcraft-source` export condition, set in the
+`dev` and `test` scripts and in `tsconfig.json`). The image ships the kit's built JavaScript,
+because Node won't run TypeScript from `node_modules`.
+
 ```sh
-pnpm --filter @spotcraft/agent test        # node:test, no Docker needed
+pnpm --filter @spotcraft/agent test        # node:test; the database test needs KIT_TEST_POSTGRES_URL
 pnpm --filter @spotcraft/agent typecheck
 docker build -f agent/Dockerfile .         # from the repository root
 ```

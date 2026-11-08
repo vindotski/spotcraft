@@ -1,0 +1,52 @@
+{
+  "name": "spotcraft",
+  "version": "0.2.0",
+  "description": "The spotcraft command: run the Spotcraft apps server's database setup locally",
+  "keywords": [
+    "spotcraft",
+    "cli",
+    "postgres",
+    "local-development"
+  ],
+  "homepage": "https://spotcraft.dev",
+  "bugs": {
+    "url": "https://github.com/vindotski/spotcraft/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vindotski/spotcraft.git",
+    "directory": "packages/cli"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "LICENSE",
+    "NOTICE",
+    "dist"
+  ],
+  "bin": {
+    "spotcraft": "./dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "test": "node --conditions=spotcraft-source --test 'test/**/*.test.ts'",
+    "spotcraft": "node --conditions=spotcraft-source src/cli.ts",
+    "prepack": "node -e \"const fs = require('node:fs'); if (!fs.existsSync('dist')) throw new Error('Build first: pnpm --recursive run build'); for (const f of ['LICENSE', 'NOTICE']) fs.copyFileSync('../../' + f, f)\""
+  },
+  "dependencies": {
+    "@spotcraft/kit": "workspace:*",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "typescript": "catalog:"
+  }
+}

@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AppSpec } from './app-spec.ts'
 
@@ -7,6 +7,12 @@ export interface AppFiles {
   spec: string
   compose: string
   site: string
+}
+
+/** Values the agent generates for an app and never returns over the API. */
+export interface AppSecrets {
+  /** Password of the app's Postgres role. */
+  databasePassword?: string
 }
 
 export class Store {
@@ -62,6 +68,28 @@ export class Store {
     await writeFile(join(this.appDir(name), 'app.json'), files.spec)
     await writeFile(this.composePath(name), files.compose)
     await writeFile(this.sitePath(name), files.site)
+  }
+
+  #secretsPath(name: string) {
+    return join(this.appDir(name), 'secrets.json')
+  }
+
+  async readSecrets(name: string): Promise<AppSecrets> {
+    try {
+      return JSON.parse(await readFile(this.#secretsPath(name), 'utf8')) as AppSecrets
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}
+      throw error
+    }
+  }
+
+  /** Readable by the agent's user only. */
+  async writeSecrets(name: string, secrets: AppSecrets) {
+    await mkdir(this.appDir(name), { recursive: true })
+    await writeFile(this.#secretsPath(name), `${JSON.stringify(secrets, null, 2)}\n`, {
+      mode: 0o600,
+    })
+    await chmod(this.#secretsPath(name), 0o600)
   }
 
   async remove(name: string) {

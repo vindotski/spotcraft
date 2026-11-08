@@ -74,11 +74,13 @@ jobs:
       - name: Deploy the apps server
         env:
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+          POSTGRES_AGENT_PASSWORD: ${{ secrets.POSTGRES_AGENT_PASSWORD }}
         run: |
-          scp infra/apps-server/compose.yaml infra/apps-server/Caddyfile apps:/opt/spotcraft/
+          scp infra/apps-server/compose.yaml infra/apps-server/Caddyfile infra/apps-server/pg_hba.conf apps:/opt/spotcraft/
           {
             printf 'export ROLE=apps SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q PRIVATE_IP=%q OPS_PRIVATE_IP=%q AGENT_TOKEN=%q\n' \
               "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$OPS_PRIVATE_IP" "$AGENT_TOKEN"
+            printf 'export POSTGRES_AGENT_PASSWORD=%q\n' "$POSTGRES_AGENT_PASSWORD"
             cat infra/remote-deploy.sh
           } | ssh apps bash -s
 

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import type { AppSpec } from './app-spec.ts'
 import type { Runner, RunResult } from './runner.ts'
 import type { Store } from './store.ts'
@@ -41,6 +42,42 @@ function withStatus(spec: AppSpec, row: ContainerRow | undefined): AppStatus {
   }
 }
 
+/**
+ * App databases on the apps server's Postgres (ADR 0015). Kept behind this interface so
+ * this module (which the dashboard imports for its types) doesn't load the database code.
+ */
+export interface Databases {
+  /** Creates or updates the app's role and database; returns the app's DATABASE_URL. */
+  provision(name: string, password: string): Promise<string>
+  /** Drops the app's database and role, if they exist. */
+  purge(name: string): Promise<void>
+  /** A page of the app's users (ADR 0018), newest first. */
+  listUsers(name: string, page: { limit: number; cursor?: string }): Promise<UserPage>
+  /** Deletes a user; their sessions and the app's rows go with them. False if not found. */
+  deleteUser(name: string, id: string): Promise<boolean>
+}
+
+/** A user of an app, as the dashboard shows it. */
+export interface AppUser {
+  id: string
+  /** A guest (no sign-up) rather than a registered user. */
+  guest: boolean
+  createdAt: string
+  /** When a session of theirs was last used; null if they have none left. */
+  lastSeen: string | null
+}
+
+export interface UserPage {
+  /** False when the app's database has no `auth` schema (it doesn't use the kit). */
+  available: boolean
+  total: number
+  users: AppUser[]
+  /** Pass back as `cursor` for the next (older) page; absent on the last page. */
+  next?: string
+}
+
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
 const tail = (result: RunResult) => `${result.stdout}\n${result.stderr}`.trim().slice(-4000)
 
 /** Deploys and removes apps. One change at a time; reads run freely. */
@@ -48,12 +85,15 @@ export class Apps {
   readonly #store: Store
   readonly #run: Runner
   readonly #caddyContainer: string
+  readonly #databases: Databases | undefined
   #queue: Promise<unknown> = Promise.resolve()
 
-  constructor(store: Store, run: Runner, caddyContainer: string) {
+  /** Without `databases`, apps can't ask for a database (the server has no Postgres). */
+  constructor(store: Store, run: Runner, caddyContainer: string, databases?: Databases) {
     this.#store = store
     this.#run = run
     this.#caddyContainer = caddyContainer
+    this.#databases = databases
   }
 
   #exclusive<T>(task: () => Promise<T>): Promise<T> {
@@ -126,10 +166,12 @@ export class Apps {
   /** Writes the app's files and rolls it out; on failure, puts the previous version back. */
   deploy(spec: AppSpec): Promise<AppStatus> {
     return this.#exclusive(async () => {
+      // The database first: if it can't be prepared, nothing else has changed yet.
+      const databaseUrl = spec.database ? await this.#provision(spec.name) : undefined
       const previous = await this.#store.read(spec.name)
       const next = {
         spec: `${JSON.stringify(spec, null, 2)}\n`,
-        compose: renderCompose(spec),
+        compose: renderCompose(spec, databaseUrl),
         site: renderSite(spec),
       }
       await this.#store.write(spec.name, next)
@@ -161,6 +203,47 @@ export class Apps {
     })
   }
 
+  /** Prepares the app's database with its stored password (generated the first time). */
+  async #provision(name: string): Promise<string> {
+    if (!this.#databases) {
+      throw new AgentError('This server has no Postgres configured for app databases', 409)
+    }
+    const secrets = await this.#store.readSecrets(name)
+    const password = secrets.databasePassword ?? randomBytes(24).toString('hex')
+    let url: string
+    try {
+      url = await this.#databases.provision(name, password)
+    } catch (error) {
+      throw new AgentError(`Could not prepare the database for ${name}`, 502, message(error))
+    }
+    if (!secrets.databasePassword) {
+      await this.#store.writeSecrets(name, { ...secrets, databasePassword: password })
+    }
+    return url
+  }
+
+  /**
+   * Brings every app database up to date (role settings, grants, `auth` migrations), e.g.
+   * after Spotcraft was upgraded. Each app is tried even if another fails.
+   */
+  upgradeDatabases(): Promise<{ upgraded: string[]; failed: { name: string; error: string }[] }> {
+    return this.#exclusive(async () => {
+      const result = { upgraded: [] as string[], failed: [] as { name: string; error: string }[] }
+      if (!this.#databases) return result
+      for (const spec of await this.#store.list()) {
+        if (!spec.database) continue
+        try {
+          await this.#provision(spec.name)
+          result.upgraded.push(spec.name)
+        } catch (error) {
+          const detail = error instanceof AgentError ? error.output : message(error)
+          result.failed.push({ name: spec.name, error: detail })
+        }
+      }
+      return result
+    })
+  }
+
   async #restore(name: string, previous: Awaited<ReturnType<Store['read']>>) {
     if (previous) {
       await this.#store.write(name, previous)
@@ -172,13 +255,44 @@ export class Apps {
     await this.#reloadCaddy()
   }
 
-  remove(name: string): Promise<boolean> {
+  /** The app's database interface, or why its users can't be shown (404 or 409). */
+  async #userDatabase(name: string): Promise<Databases> {
+    const spec = await this.#store.get(name)
+    if (!spec) throw new AgentError('No such app', 404)
+    if (!spec.database || !this.#databases) throw new AgentError(`${name} has no database`, 409)
+    return this.#databases
+  }
+
+  async listUsers(name: string, page: { limit: number; cursor?: string }): Promise<UserPage> {
+    return (await this.#userDatabase(name)).listUsers(name, page)
+  }
+
+  async deleteUser(name: string, id: string): Promise<boolean> {
+    return (await this.#userDatabase(name)).deleteUser(name, id)
+  }
+
+  /**
+   * Stops and removes the app. Its database is kept unless `purge` is set, so removing an
+   * app by mistake loses no data; with `purge`, the database and its role are dropped.
+   */
+  remove(name: string, { purge = false } = {}): Promise<boolean> {
     return this.#exclusive(async () => {
       if (!(await this.#store.read(name))) return false
       const down = await this.#compose(name, ['down', '--remove-orphans'])
       if (down.code !== 0) throw new AgentError(`Could not stop ${name}`, 500, tail(down))
       await this.#store.remove(name)
       await this.#reloadCaddy()
+      if (purge && this.#databases) {
+        try {
+          await this.#databases.purge(name)
+        } catch (error) {
+          throw new AgentError(
+            `${name} was removed, but its database could not be deleted`,
+            500,
+            message(error),
+          )
+        }
+      }
       return true
     })
   }

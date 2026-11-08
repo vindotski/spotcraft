@@ -1,0 +1,70 @@
+{
+  "name": "@spotcraft/kit",
+  "version": "0.2.0",
+  "description": "Guest accounts and app databases for server-rendered apps on Spotcraft",
+  "keywords": [
+    "spotcraft",
+    "auth",
+    "guest",
+    "better-auth",
+    "postgres",
+    "drizzle"
+  ],
+  "homepage": "https://spotcraft.dev",
+  "bugs": {
+    "url": "https://github.com/vindotski/spotcraft/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vindotski/spotcraft.git",
+    "directory": "packages/kit"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "LICENSE",
+    "NOTICE",
+    "browser.js",
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "browser": "./browser.js",
+      "spotcraft-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "spotcraft-source": "./src/schema.ts",
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
+    },
+    "./provision": {
+      "spotcraft-source": "./src/provision.ts",
+      "types": "./dist/provision.d.ts",
+      "default": "./dist/provision.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/migrations', 'dist/migrations', { recursive: true })\"",
+    "typecheck": "tsc",
+    "test": "node --test 'test/**/*.test.ts'",
+    "prepack": "node -e \"const fs = require('node:fs'); if (!fs.existsSync('dist')) throw new Error('Build first: pnpm --recursive run build'); for (const f of ['LICENSE', 'NOTICE']) fs.copyFileSync('../../' + f, f)\""
+  },
+  "dependencies": {
+    "better-auth": "^1.7.18",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "typescript": "catalog:"
+  }
+}

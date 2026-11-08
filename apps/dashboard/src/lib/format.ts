@@ -32,3 +32,18 @@ export const uptime = (ratio: number | null | undefined) =>
 
 export const clock = (unixSeconds: number) =>
   new Date(unixSeconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+/** A date and time in the server's locale, e.g. "8 Nov 2026, 06:12". */
+export const dateTime = (iso: string) =>
+  new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+
+/** How long ago, roughly: "just now", "5 min ago", "3 h ago", "12 days ago". */
+export function ago(iso: string | null, now = Date.now()): string {
+  if (!iso) return '—'
+  const minutes = Math.floor((now - Date.parse(iso)) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours} h ago`
+  return `${Math.floor(hours / 24)} days ago`
+}

@@ -29,9 +29,16 @@ export const actions: Actions = {
     if (!result.ok) return fail(502, { deployError: result.error, output: result.output })
     return { redeployed: true }
   },
-  remove: async ({ params }) => {
-    await removeApp(params.name)
-    await writeProbes(await listApps()).catch(() => {})
+  remove: async ({ params, request }) => {
+    const purge = (await request.formData()).get('purge') === 'on'
+    try {
+      await removeApp(params.name, { purge })
+    } catch (cause) {
+      // E.g. the app was removed but its database could not be deleted: say exactly that.
+      error(502, cause instanceof Error ? cause.message : 'The agent could not remove the app')
+    } finally {
+      await writeProbes(await listApps()).catch(() => {})
+    }
     redirect(303, '/')
   },
 }

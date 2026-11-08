@@ -5,10 +5,49 @@ All notable changes to Spotcraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). What counts as
 Spotcraft's public API, and so what makes a change breaking, is defined in
-[ADR 0013](docs/decisions/0013-one-version.md). While the version is 0.y.z, a breaking change
+[ADR 0019](docs/decisions/0019-one-version-with-npm.md). While the version is 0.y.z, a breaking change
 raises the minor version and is listed under **Changed** or **Removed** with migration steps.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-11-08
+
+Databases for hosted apps, and a backend kit that gives server-rendered apps guest accounts:
+one Postgres on the apps server with a database per app, the `spotcraft dev` command to run
+the same setup locally, and the dashboard to see and delete an app's users. **Before
+deploying, add the `POSTGRES_AGENT_PASSWORD` secret** (see Changed).
+
+### Added
+
+- **Postgres** on the apps server (`postgres` service, Postgres 18), the base for databases for
+  hosted apps. Reachable only inside Docker; the superuser only over the local socket.
+- **App databases** in the agent's API: `database: true` gives an app its own Postgres role and
+  database as `DATABASE_URL`. Removing an app keeps its database unless `?purge=true`. When
+  the agent starts, it brings every app database up to date.
+- **`spotcraft dev`** (`packages/cli`): the apps server's Postgres and app database setup on
+  your machine, for local development (`start`, `stop`, `status`, `env --write`, `reset`,
+  `migrate`).
+- **npm packages**, published by CI on release tags with provenance: `@spotcraft/kit` and
+  the CLI as `spotcraft` (`npx spotcraft dev start`). Their APIs join the public API
+  ([ADR 0019](docs/decisions/0019-one-version-with-npm.md)).
+- **Guide**: [Guest accounts with the backend kit](docs/guides/backend-kit.md), for a SvelteKit
+  app locally and on Spotcraft.
+- **Backend kit** (`packages/kit`): guest accounts for server-rendered apps on Better Auth,
+  server-only (an httpOnly session cookie, no auth routes), with a guest limit per client
+  address and a check of the `auth` schema version. `currentGuest` reads without creating,
+  so apps create guests only when a visitor saves something, not for every page view or
+  crawler.
+- **App users**: for apps with a database, the dashboard lists their users (guests and
+  registered, created, last seen) and deletes one with everything the app kept for them; the
+  agent's API has `GET /apps/:name/users` and `DELETE /apps/:name/users/:id`.
+- **Dashboard**: a Database checkbox when adding or editing an app, the database in the app's
+  settings, and "Also delete its database" when removing it.
+
+### Changed
+
+- The Deploy workflow needs a new secret, `POSTGRES_AGENT_PASSWORD` (`openssl rand -hex 32`),
+  on the `production` environment. Add it before deploying this version, or the deploy stops
+  with "POSTGRES_AGENT_PASSWORD is empty". The apps server needs about 1 GB more memory.
 
 ## [0.1.0] - 2026-11-07
 
@@ -53,5 +92,6 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/vindotski/spotcraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.1.0

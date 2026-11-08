@@ -23,3 +23,7 @@ dist
 # OS / tooling
 .DS_Store
 vite.config.ts.timestamp-*
+
+# Copied into the npm packages when packing (prepack)
+packages/*/LICENSE
+packages/*/NOTICE

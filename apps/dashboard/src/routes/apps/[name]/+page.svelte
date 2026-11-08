@@ -15,6 +15,7 @@
   const m = $derived(data.metrics)
   const last = (series: Array<[number, number]>) => (series.length ? series[series.length - 1][1] : null)
   let redeploying = $state(false)
+  let purge = $state(false)
 </script>
 
 <svelte:head><title>{app.name} · Spotcraft</title></svelte:head>
@@ -34,6 +35,7 @@
     </p>
   </div>
   <div class="flex gap-2">
+    {#if app.database}<Button href="/apps/{app.name}/users" variant="outline">Users</Button>{/if}
     <Button href="/apps/{app.name}/edit" variant="outline">Edit</Button>
     <form
       method="POST"
@@ -55,13 +57,27 @@
           <AlertDialog.Title>Remove {app.name}?</AlertDialog.Title>
           <AlertDialog.Description>
             Stops the container and removes its settings and its site. {app.domain} stops answering. The image stays on Docker Hub, so you can add it again.
+            {#if app.database}
+              Its database is kept, so adding the app again brings its data back, unless you delete it below.
+            {/if}
           </AlertDialog.Description>
         </AlertDialog.Header>
+        <form id="remove-app" method="POST" action="?/remove">
+          {#if app.database}
+            <label class="flex items-start gap-3 text-sm">
+              <input type="checkbox" name="purge" bind:checked={purge} class="mt-1 size-4 accent-destructive" />
+              <span>
+                Also delete its database
+                <span class="block text-xs text-muted-foreground">Every row in app_{app.name.replaceAll('-', '_')} is lost. This cannot be undone.</span>
+              </span>
+            </label>
+          {/if}
+        </form>
         <AlertDialog.Footer>
           <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-          <form method="POST" action="?/remove">
-            <Button type="submit" variant="destructive">Remove {app.name}</Button>
-          </form>
+          <Button type="submit" form="remove-app" variant="destructive">
+            {purge ? `Remove ${app.name} and its data` : `Remove ${app.name}`}
+          </Button>
         </AlertDialog.Footer>
       </AlertDialog.Content>
     </AlertDialog.Root>
@@ -100,6 +116,10 @@
     <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
       <dt class="text-muted-foreground">Port</dt><dd class="tabular-nums">{app.port}</dd>
       <dt class="text-muted-foreground">Filesystem</dt><dd>{app.readOnly ? 'Read-only' : 'Writable'}</dd>
+      <dt class="text-muted-foreground">Database</dt>
+      <dd>
+        {#if app.database}Postgres <span class="font-mono">app_{app.name.replaceAll('-', '_')}</span>{:else}None{/if}
+      </dd>
       <dt class="text-muted-foreground">Environment</dt><dd>{Object.keys(app.env).length === 1 ? '1 variable' : `${Object.keys(app.env).length} variables`}</dd>
     </dl>
   </div>

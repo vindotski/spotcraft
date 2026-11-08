@@ -11,6 +11,8 @@ export interface AppSpec {
   cpus: number
   /** Read-only root filesystem (with a small writable /tmp). */
   readOnly: boolean
+  /** Its own Postgres role and database on the apps server, given to it as DATABASE_URL. */
+  database: boolean
 }
 
 // Names end up in container names, network aliases and file paths.
@@ -24,7 +26,7 @@ export const ENV_KEY = '^[A-Za-z_][A-Za-z0-9_]*$'
 export const MEMORY = '^[1-9][0-9]{0,5}[mg]$'
 
 /** Names the apps server's own services use; an app can't take them. */
-export const RESERVED_NAMES = new Set(['caddy', 'agent', 'node-exporter', 'cadvisor'])
+export const RESERVED_NAMES = new Set(['caddy', 'agent', 'node-exporter', 'cadvisor', 'postgres'])
 
 export const appBodySchema = {
   type: 'object',
@@ -45,8 +47,13 @@ export const appBodySchema = {
     memory: { type: 'string', pattern: MEMORY, default: '512m' },
     cpus: { type: 'number', minimum: 0.1, maximum: 64, default: 1 },
     readOnly: { type: 'boolean', default: true },
+    // No default: left out, an update keeps the app's current setting (see the PUT route).
+    database: { type: 'boolean' },
   },
 } as const
+
+/** The PUT body: everything but the name, and `database` may be left out. */
+export type AppBody = Omit<AppSpec, 'name' | 'database'> & { database?: boolean }
 
 export const nameParamsSchema = {
   type: 'object',

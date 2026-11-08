@@ -1,4 +1,4 @@
-// Spotcraft has one version (ADR 0013): every workspace package must carry the root's.
+// Spotcraft has one version (ADR 0019): every workspace package must carry the root's.
 // Usage: node scripts/check-versions.ts            check, exit 1 on a mismatch
 //        node scripts/check-versions.ts 0.2.0      set every package to 0.2.0
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -8,6 +8,8 @@ const files = [
   'agent/package.json',
   'apps/dashboard/package.json',
   'apps/site/package.json',
+  'packages/cli/package.json',
+  'packages/kit/package.json',
   'packages/ui/package.json',
 ]
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/

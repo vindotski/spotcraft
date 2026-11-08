@@ -3,7 +3,8 @@
   "compilerOptions": {
     "types": ["node"],
     "allowImportingTsExtensions": true,
-    "erasableSyntaxOnly": true
+    "erasableSyntaxOnly": true,
+    "customConditions": ["spotcraft-source"]
   },
   "include": ["src", "test"]
 }

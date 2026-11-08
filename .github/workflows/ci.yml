@@ -19,6 +19,22 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # The kit's database tests run against the same Postgres image as the apps server
+    # (infra/apps-server/compose.yaml); keep the two in step.
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+        env:
+          POSTGRES_PASSWORD: ci-only-superuser
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KIT_TEST_POSTGRES_URL: postgres://postgres:ci-only-superuser@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,3 +162,65 @@ jobs:
           docker run --rm -v "$PWD/image.tar:/image.tar:ro" -v "$PWD/.trivyignore.yaml:/.trivyignore.yaml:ro" \
             "$TRIVY" image --quiet --input /image.tar --ignorefile /.trivyignore.yaml \
             --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+
+  # Release tags only: publishes @spotcraft/kit and the CLI (`spotcraft`) to npm (ADR 0019),
+  # after the same commit passed verify and built its images. Trusted publishing (GitHub
+  # OIDC): no token is stored and provenance is automatic. NPM_TOKEN (environment `npm`) is
+  # only for the very first publish, before a trusted publisher can be linked; delete it after.
+  npm:
+    name: npm packages
+    needs: [verify, images]
+    # Only the original repository publishes these names; forks of the template skip it.
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+      - name: Check the tag and npm
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          tag="${REF#refs/tags/v}"
+          version="$(jq -r .version package.json)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag v$tag doesn't match package.json version $version"
+            exit 1
+          fi
+          # Trusted publishing needs npm 11.5.1 or later.
+          npx --yes semver@7.7.3 -r '>=11.5.1' "$(npm --version)" > /dev/null || {
+            echo "::error::npm $(npm --version) is too old for trusted publishing"
+            exit 1
+          }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @spotcraft/kit --filter spotcraft build
+      # npm doesn't know pnpm's workspace: protocol; the CLI depends on the kit's exact version.
+      - run: node scripts/pin-workspace-deps.ts packages/cli
+      - name: Publish (kit first, the CLI depends on it)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="$(jq -r .version package.json)"
+          tag=latest
+          case "$version" in *-*) tag=next ;; esac
+          # With a token, ask for provenance explicitly; with OIDC it's automatic.
+          extra=()
+          [ -n "$NODE_AUTH_TOKEN" ] && extra=(--provenance)
+          for dir in packages/kit packages/cli; do
+            name="$(jq -r .name "$dir/package.json")"
+            if npm view "$name@$version" version > /dev/null 2>&1; then
+              echo "$name@$version is already on npm; skipping"
+              continue
+            fi
+            (cd "$dir" && npm publish --access public --tag "$tag" "${extra[@]}")
+          done

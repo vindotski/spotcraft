@@ -9,6 +9,7 @@
 #   AGENT_TOKEN               shared by the agent and the dashboard
 #   apps: PRIVATE_IP          this server's private address
 #   apps: OPS_PRIVATE_IP      the ops server's private address (the only agent client)
+#   apps: POSTGRES_AGENT_PASSWORD  password of the agent's Postgres role (spotcraft_agent)
 #   ops:  APPS_PRIVATE_IP, DASHBOARD_DOMAIN, DASHBOARD_PASSWORD_HASH, SESSION_SECRET
 set -euo pipefail
 cd /opt/spotcraft
@@ -39,8 +40,15 @@ require ROLE SPOTCRAFT_TAG IMAGE_NAMESPACE AGENT_TOKEN
 umask 077
 case "$ROLE" in
   apps)
-    require PRIVATE_IP OPS_PRIVATE_IP
+    require PRIVATE_IP OPS_PRIVATE_IP POSTGRES_AGENT_PASSWORD
     DOCKER_GID="$(getent group docker | cut -d: -f3)"
+    # Postgres needs a superuser password once, when its data directory is created; nobody
+    # uses it afterwards (the superuser only works over the container's local socket). It is
+    # generated here on the first deploy and kept in .env, never stored in GitHub.
+    POSTGRES_SUPERUSER_PASSWORD="$(sed -n 's/^POSTGRES_SUPERUSER_PASSWORD=//p' .env 2>/dev/null || true)"
+    if [ -z "$POSTGRES_SUPERUSER_PASSWORD" ]; then
+      POSTGRES_SUPERUSER_PASSWORD="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    fi
     cat > .env.new <<ENV
 PRIVATE_IP=$PRIVATE_IP
 OPS_PRIVATE_IP=$OPS_PRIVATE_IP
@@ -48,6 +56,8 @@ SPOTCRAFT_TAG=$SPOTCRAFT_TAG
 SPOTCRAFT_AGENT_IMAGE=$IMAGE_NAMESPACE/spotcraft-agent
 AGENT_TOKEN=$AGENT_TOKEN
 DOCKER_GID=$DOCKER_GID
+POSTGRES_AGENT_PASSWORD=$POSTGRES_AGENT_PASSWORD
+POSTGRES_SUPERUSER_PASSWORD=$POSTGRES_SUPERUSER_PASSWORD
 ENV
     ;;
   ops)
@@ -121,6 +131,30 @@ fi
 docker compose config --quiet
 docker compose pull --quiet
 docker compose up -d --wait --wait-timeout 180 --remove-orphans
+
+# The agent's Postgres role: created on the first deploy, its password kept in step with the
+# secret on every deploy. It may create databases and roles, but is not a superuser. Running
+# this again changes nothing. The password travels on psql's stdin (as a psql variable), never
+# on a command line.
+if [ "$ROLE" = apps ]; then
+  {
+    printf '\\set pw %s\n' "$POSTGRES_AGENT_PASSWORD"
+    cat <<'SQL'
+SELECT NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'spotcraft_agent') AS missing \gset
+\if :missing
+  CREATE ROLE spotcraft_agent LOGIN CREATEDB CREATEROLE PASSWORD :'pw';
+\else
+  ALTER ROLE spotcraft_agent LOGIN CREATEDB CREATEROLE NOSUPERUSER PASSWORD :'pw';
+\endif
+-- Roles the agent creates (one per app) are ones it may SET ROLE to, which Postgres requires
+-- to make them a database's owner; it doesn't inherit their rights.
+ALTER ROLE spotcraft_agent SET createrole_self_grant = 'set';
+-- Apps get CONNECT on their own database only; the built-in ones are the agent's.
+REVOKE CONNECT ON DATABASE postgres, template1 FROM PUBLIC;
+GRANT CONNECT ON DATABASE postgres TO spotcraft_agent;
+SQL
+  } | docker compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres
+fi
 
 if [ "$migrate" = true ] && [ "$ROLE" = apps ]; then
   for app in apps/*/compose.yaml; do

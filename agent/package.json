@@ -1,20 +1,23 @@
 {
   "name": "@spotcraft/agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.ts",
+    "dev": "node --conditions=spotcraft-source --watch src/index.ts",
     "start": "node src/index.ts",
     "typecheck": "tsc",
-    "test": "node --test 'test/**/*.test.ts'"
+    "test": "node --conditions=spotcraft-source --test 'test/**/*.test.ts'"
   },
   "dependencies": {
-    "fastify": "^5.12.8"
+    "@spotcraft/kit": "workspace:*",
+    "fastify": "^5.12.8",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
     "typescript": "catalog:"
   },
   "exports": {

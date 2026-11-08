@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import Fastify, { type FastifyServerOptions } from 'fastify'
-import type { AppSpec } from './app-spec.ts'
+import type { AppBody } from './app-spec.ts'
 import { appBodySchema, nameParamsSchema, RESERVED_NAMES } from './app-spec.ts'
 import { AgentError, type Apps } from './apps.ts'
 
@@ -15,8 +15,9 @@ export interface BuildOptions {
 /** `::ffff:10.0.0.3` (an IPv4 client on a dual-stack socket) is `10.0.0.3`. */
 const normalizeIp = (ip: string) => (ip.startsWith('::ffff:') ? ip.slice(7) : ip)
 
-type AppBody = Omit<AppSpec, 'name'>
 type NameParams = { name: string }
+
+const UUID = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 const digest = (value: string) => createHash('sha256').update(value).digest()
 
@@ -87,22 +88,79 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
       if (RESERVED_NAMES.has(name)) {
         return reply.code(400).send({ error: `"${name}" is reserved` })
       }
+      // Left out, `database` keeps its current value, so a client that doesn't know the field
+      // (an older dashboard) never takes an app's database away by updating it.
+      const current = await apps.get(name)
+      const database = request.body.database ?? current?.database ?? false
+      if (database && 'DATABASE_URL' in request.body.env) {
+        return reply
+          .code(400)
+          .send({ error: 'DATABASE_URL is set by Spotcraft when the app has a database' })
+      }
       const taken = (await apps.list()).find(
         (other) => other.name !== name && other.domain === request.body.domain,
       )
       if (taken) {
         return reply.code(409).send({ error: `${request.body.domain} is used by ${taken.name}` })
       }
-      return apps.deploy({ name, ...request.body })
+      return apps.deploy({ name, ...request.body, database })
     },
   )
 
-  app.delete<{ Params: NameParams }>(
+  app.delete<{ Params: NameParams; Querystring: { purge: boolean } }>(
     '/apps/:name',
-    { schema: { params: nameParamsSchema } },
+    {
+      schema: {
+        params: nameParamsSchema,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { purge: { type: 'boolean', default: false } },
+        },
+      },
+    },
     async (request, reply) => {
-      const removed = await apps.remove(request.params.name)
+      const removed = await apps.remove(request.params.name, { purge: request.query.purge })
       return removed ? reply.code(204).send() : reply.code(404).send({ error: 'No such app' })
+    },
+  )
+
+  // An app's users (ADR 0018), read and deleted in its own database's `auth` tables.
+  app.get<{ Params: NameParams; Querystring: { limit: number; cursor?: string } }>(
+    '/apps/:name/users',
+    {
+      schema: {
+        params: nameParamsSchema,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            limit: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
+            cursor: { type: 'string', maxLength: 200, pattern: '^[A-Za-z0-9_-]+$' },
+          },
+        },
+      },
+    },
+    async (request) => apps.listUsers(request.params.name, request.query),
+  )
+
+  app.delete<{ Params: NameParams & { id: string } }>(
+    '/apps/:name/users/:id',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['name', 'id'],
+          properties: {
+            ...nameParamsSchema.properties,
+            id: { type: 'string', pattern: UUID },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const deleted = await apps.deleteUser(request.params.name, request.params.id)
+      return deleted ? reply.code(204).send() : reply.code(404).send({ error: 'No such user' })
     },
   )
 

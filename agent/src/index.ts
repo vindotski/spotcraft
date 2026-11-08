@@ -1,11 +1,13 @@
 import { buildApp } from './app.ts'
 import { Apps } from './apps.ts'
 import { loadConfig } from './config.ts'
+import { postgresDatabases } from './databases.ts'
 import { execRunner } from './runner.ts'
 import { Store } from './store.ts'
 
 const config = loadConfig()
-const apps = new Apps(new Store(config.dataDir), execRunner, config.caddyContainer)
+const databases = config.postgresUrl ? postgresDatabases(config.postgresUrl) : undefined
+const apps = new Apps(new Store(config.dataDir), execRunner, config.caddyContainer, databases)
 const app = buildApp({
   token: config.token,
   apps,
@@ -25,3 +27,21 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 await app.listen({ host: config.host, port: config.port })
+
+// After an upgrade, bring every app database up to date. Postgres may still be starting
+// (both start in the same deploy), so failures are retried for a few minutes.
+if (databases) {
+  for (let attempt = 1; attempt <= 36; attempt++) {
+    const { upgraded, failed } = await apps.upgradeDatabases()
+    if (failed.length === 0) {
+      if (upgraded.length > 0) app.log.info({ upgraded }, 'app databases up to date')
+      break
+    }
+    if (attempt === 36) {
+      app.log.error({ failed }, 'gave up bringing app databases up to date')
+      break
+    }
+    app.log.warn({ failed, attempt }, 'app databases not up to date yet; retrying')
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+  }
+}
