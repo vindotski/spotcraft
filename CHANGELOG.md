@@ -5,7 +5,7 @@ All notable changes to Spotcraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). What counts as
 Spotcraft's public API, and so what makes a change breaking, is defined in
-[ADR 0013](docs/decisions/0013-one-version.md). While the version is 0.y.z, a breaking change
+[ADR 0019](docs/decisions/0019-one-version-with-npm.md). While the version is 0.y.z, a breaking change
 raises the minor version and is listed under **Changed** or **Removed** with migration steps.
 
 ## [Unreleased]
@@ -20,6 +20,9 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 - **`spotcraft dev`** (`packages/cli`): the apps server's Postgres and app database setup on
   your machine, for local development (`start`, `stop`, `status`, `env --write`, `reset`,
   `migrate`).
+- **npm packages**, published by CI on release tags with provenance: `@spotcraft/kit` and
+  the CLI as `spotcraft` (`npx spotcraft dev start`). Their APIs join the public API
+  ([ADR 0019](docs/decisions/0019-one-version-with-npm.md)).
 - **Backend kit** (`packages/kit`): guest accounts for server-rendered apps on Better Auth,
   server-only (an httpOnly session cookie, no auth routes), with a guest limit per client
   address and a check of the `auth` schema version.

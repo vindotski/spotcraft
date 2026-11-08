@@ -62,8 +62,9 @@ To upgrade, run the Deploy workflow with the new version. To roll back, run it w
 ## Versions
 
 Spotcraft has one version for everything, following [Semantic Versioning](https://semver.org).
-Images are tagged `0.1.0` and `0.1` (and `latest` from `main`). What counts as a breaking change
-is defined in [ADR 0013](docs/decisions/0013-one-version.md); changes are listed in the
+Images are tagged `0.1.0` and `0.1` (and `latest` from `main`), and the npm packages for apps,
+`@spotcraft/kit` and `spotcraft` (the CLI), carry the same version. What counts as a breaking change
+is defined in [ADR 0019](docs/decisions/0019-one-version-with-npm.md); changes are listed in the
 [changelog](CHANGELOG.md).
 
 ## Repository

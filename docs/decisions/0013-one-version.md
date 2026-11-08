@@ -1,11 +1,11 @@
 ---
 title: One Semantic Version for the whole project
 number: 13
-status: accepted
+status: superseded
 implementation: done
 date: 2026-11-07
 supersedes: []
-superseded_by: []
+superseded_by: [19]
 notes: ""
 ---
 

@@ -5,10 +5,10 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "node --conditions=source --watch src/index.ts",
+    "dev": "node --conditions=spotcraft-source --watch src/index.ts",
     "start": "node src/index.ts",
     "typecheck": "tsc",
-    "test": "node --conditions=source --test 'test/**/*.test.ts'"
+    "test": "node --conditions=spotcraft-source --test 'test/**/*.test.ts'"
   },
   "dependencies": {
     "@spotcraft/kit": "workspace:*",

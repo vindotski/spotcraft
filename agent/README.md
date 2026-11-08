@@ -100,7 +100,7 @@ with `DOCKER_GID`); the Docker CLI keeps its config in `/tmp` so the root filesy
 read-only. Mounting the Docker socket still makes the agent
 equivalent to root on the server; the private-network binding and the token protect it.
 
-The workspace runs the kit's TypeScript source (the `source` export condition, set in the
+The workspace runs the kit's TypeScript source (the `spotcraft-source` export condition, set in the
 `dev` and `test` scripts and in `tsconfig.json`). The image ships the kit's built JavaScript,
 because Node won't run TypeScript from `node_modules`.
 

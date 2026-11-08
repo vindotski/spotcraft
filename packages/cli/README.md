@@ -1,12 +1,13 @@
-# @spotcraft/cli
+# spotcraft
 
 The `spotcraft` command. For now it has one job: `spotcraft dev` runs, on your machine, the same
 Postgres and app database setup an app gets on a Spotcraft apps server
-([ADR 0017](../../docs/decisions/0017-local-stack.md)). It needs Docker.
+([ADR 0017](https://github.com/vindotski/spotcraft/blob/main/docs/decisions/0017-local-stack.md)). It needs Docker.
 
 ```bash
-spotcraft dev start          # start the local Postgres and set up this app's database
-spotcraft dev env --write    # add DATABASE_URL and AUTH_SECRET to .env (only if missing)
+npm install --save-dev spotcraft   # same version as the Spotcraft you deploy to
+npx spotcraft dev start            # start the local Postgres and set up this app's database
+npx spotcraft dev env --write      # add DATABASE_URL and AUTH_SECRET to .env (only if missing)
 ```
 
 | Command             | What                                                                                  |
@@ -45,6 +46,6 @@ To remove everything: `docker compose -p spotcraft-dev down -v`.
 
 ## Developing
 
-In the workspace, run it from source with `pnpm --filter @spotcraft/cli spotcraft dev …`. Note
-that pnpm runs it in `packages/cli`, so pass `--name`. `pnpm --filter @spotcraft/cli build`
+In the workspace, run it from source with `pnpm --filter spotcraft spotcraft dev …`. Note
+that pnpm runs it in `packages/cli`, so pass `--name`. `pnpm --filter spotcraft build`
 writes `dist/` (the `spotcraft` bin); it uses the kit's build, so build the kit first.

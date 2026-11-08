@@ -1,14 +1,19 @@
 # @spotcraft/kit
 
 The backend kit for server-rendered apps hosted on Spotcraft
-([ADR 0016](../../docs/decisions/0016-backend-kit.md)). For now it gives an app **guest
+([ADR 0016](https://github.com/vindotski/spotcraft/blob/main/docs/decisions/0016-backend-kit.md)). For now it gives an app **guest
 accounts**: a visitor gets an account without signing up, and the app keeps their data under
 its id. It also holds the `auth` schema and the code that gives an app its own database
-([ADR 0015](../../docs/decisions/0015-shared-postgres.md)).
-In the workspace, Node runs the TypeScript source through the `source` export condition
-(`node --conditions=source`, `customConditions` in `tsconfig.json`). Anything that installs the
+([ADR 0015](https://github.com/vindotski/spotcraft/blob/main/docs/decisions/0015-shared-postgres.md)).
+In the workspace, Node runs the TypeScript source through the `spotcraft-source` export condition
+(`node --conditions=spotcraft-source`, `customConditions` in `tsconfig.json`). Anything that installs the
 kit into `node_modules`, like the agent's image, uses the build: `pnpm --filter @spotcraft/kit
 build` writes JavaScript, type declarations and the migrations to `dist/`.
+
+```bash
+npm install @spotcraft/kit                  # same version as the Spotcraft you deploy to
+npm install --save-dev spotcraft            # the local stack: npx spotcraft dev start
+```
 
 ## Guests
 

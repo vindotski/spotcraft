@@ -214,7 +214,7 @@ describe('kit settings and packaging', () => {
         '-e',
         "import('@spotcraft/kit').then((m) => console.log(Object.keys(m).join(',')))",
       ])
-    const server = await node('source')
+    const server = await node('spotcraft-source')
     assert.match(server.stdout, /createBackend/)
     await assert.rejects(node('browser'), /server-only/)
   })
