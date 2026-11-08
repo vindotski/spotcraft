@@ -10,6 +10,17 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+### Added
+
+- **Postgres** on the apps server (`postgres` service, Postgres 18), the base for databases for
+  hosted apps. Reachable only inside Docker; the superuser only over the local socket.
+
+### Changed
+
+- The Deploy workflow needs a new secret, `POSTGRES_AGENT_PASSWORD` (`openssl rand -hex 32`),
+  on the `production` environment. Add it before deploying this version, or the deploy stops
+  with "POSTGRES_AGENT_PASSWORD is empty". The apps server needs about 1 GB more memory.
+
 ## [0.1.0] - 2026-11-07
 
 The first release: two servers, a deploy agent, a dashboard, and monitoring, enough to run a

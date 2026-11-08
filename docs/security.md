@@ -39,6 +39,12 @@ a read-only root filesystem by default, and memory, CPU and process limits. They
 and each other on the shared edge network, and the apps server's private address, where the
 agent refuses them.
 
+**Postgres** on the apps server is reachable only inside Docker: from hosted apps on the edge
+network and, on an internal network, from the agent. It is never published on a host port.
+The superuser only works over the container's local socket. Every other role needs a
+password (SCRAM). The built-in databases are closed to everyone but the agent's role, which
+can create databases and roles but is not a superuser.
+
 **Spotcraft's own containers** run without capabilities (Caddy keeps `NET_BIND_SERVICE` for ports
 80 and 443), with `no-new-privileges`, read-only root filesystems where the software allows,
 limits and health checks. None runs privileged. The agent and dashboard images are distroless
@@ -57,6 +63,9 @@ are in the repository or in images.
   it (WireGuard) is planned.
 - **Hosted apps share one network.** An app can open connections to another app's container.
   Separate networks per app are planned. Don't host apps that must not see each other.
+- **Postgres is shared.** Every app that has a database uses the same server, so one app's load
+  affects the others, and Postgres being down affects all of them. Connections to it are not
+  encrypted; they never leave the apps server.
 - **Host metrics are readable from hosted apps.** node-exporter and cAdvisor listen on the apps
   server's private address, which app containers can reach; they expose resource usage, not
   secrets.

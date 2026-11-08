@@ -64,6 +64,7 @@ In your fork's **Settings → Environments**, create `production` with:
 | secret   | `KNOWN_HOSTS`             | `ssh-keyscan -t ed25519 <apps ip> <ops ip>` (check the fingerprints) |
 | secret   | `AGENT_TOKEN`             | `openssl rand -hex 32`                                               |
 | secret   | `SESSION_SECRET`          | `openssl rand -hex 32`                                               |
+| secret   | `POSTGRES_AGENT_PASSWORD` | `openssl rand -hex 32`                                               |
 | secret   | `DASHBOARD_PASSWORD_HASH` | `pnpm --filter @spotcraft/dashboard hash-password`                   |
 
 `APPS_PRIVATE_IP` and `OPS_PRIVATE_IP` are optional variables, for private addresses other
