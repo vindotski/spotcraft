@@ -1,0 +1,24 @@
+{
+  "name": "@spotcraft/kit",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --test 'test/**/*.test.ts'"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "typescript": "catalog:"
+  },
+  "exports": {
+    "./schema": "./src/schema.ts",
+    "./provision": "./src/provision.ts"
+  }
+}

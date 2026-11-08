@@ -8,6 +8,7 @@ const files = [
   'agent/package.json',
   'apps/dashboard/package.json',
   'apps/site/package.json',
+  'packages/kit/package.json',
   'packages/ui/package.json',
 ]
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/

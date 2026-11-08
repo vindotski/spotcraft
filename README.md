@@ -73,6 +73,7 @@ is defined in [ADR 0013](docs/decisions/0013-one-version.md); changes are listed
 | `agent`                  | the agent (Fastify), runs on the apps server          |
 | `apps/dashboard`         | the dashboard (SvelteKit), runs on the ops server     |
 | `apps/site`              | the project website                                   |
+| `packages/kit`           | app databases' `auth` schema and their provisioning   |
 | `packages/ui`            | shared components and theme (shadcn-svelte)           |
 | `infra/cloud-init.yaml`  | first-boot setup for either server                    |
 | `infra/apps-server`      | compose file and Caddyfile for the apps server        |
