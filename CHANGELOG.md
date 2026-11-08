@@ -28,6 +28,9 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 - **Backend kit** (`packages/kit`): guest accounts for server-rendered apps on Better Auth,
   server-only (an httpOnly session cookie, no auth routes), with a guest limit per client
   address and a check of the `auth` schema version.
+- **App users**: for apps with a database, the dashboard lists their users (guests and
+  registered, created, last seen) and deletes one with everything the app kept for them; the
+  agent's API has `GET /apps/:name/users` and `DELETE /apps/:name/users/:id`.
 - **Dashboard**: a Database checkbox when adding or editing an app, the database in the app's
   settings, and "Also delete its database" when removing it.
 

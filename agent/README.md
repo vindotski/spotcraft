@@ -15,15 +15,17 @@ The files it writes are the only record of which apps exist:
 
 ## API
 
-| Method | Path               | What                                                       |
-| ------ | ------------------ | ---------------------------------------------------------- |
-| GET    | `/health`          | `{ ok: true }`, no token needed                            |
-| GET    | `/apps`            | every app's settings plus `state`, `health`, `status`      |
-| GET    | `/apps/:name`      | one app, or 404                                            |
-| PUT    | `/apps/:name`      | create or update, then deploy; returns the app with status |
-| DELETE | `/apps/:name`      | stop and remove the app and its site; 204, or 404          |
-|        |                    | `?purge=true` also deletes its database and role           |
-| GET    | `/apps/:name/logs` | last `?tail=` lines (default 200, max 5000), plain text    |
+| Method | Path                    | What                                                       |
+| ------ | ----------------------- | ---------------------------------------------------------- |
+| GET    | `/health`               | `{ ok: true }`, no token needed                            |
+| GET    | `/apps`                 | every app's settings plus `state`, `health`, `status`      |
+| GET    | `/apps/:name`           | one app, or 404                                            |
+| PUT    | `/apps/:name`           | create or update, then deploy; returns the app with status |
+| DELETE | `/apps/:name`           | stop and remove the app and its site; 204, or 404          |
+|        |                         | `?purge=true` also deletes its database and role           |
+| GET    | `/apps/:name/logs`      | last `?tail=` lines (default 200, max 5000), plain text    |
+| GET    | `/apps/:name/users`     | the app's users, newest first (`?limit=`, `?cursor=`)      |
+| DELETE | `/apps/:name/users/:id` | delete a user and what the app kept for them; 204, or 404  |
 
 `PUT` body (unknown fields are rejected):
 
@@ -81,6 +83,20 @@ When the agent starts, it brings every app database up to date: role settings, g
 are retried every 5 seconds for 3 minutes and logged.
 
 Without `POSTGRES_URL`, the agent runs as before, and asking for a database returns 409.
+
+## App users
+
+For an app with a database, the agent reads and deletes its users directly in the app's
+`auth` tables, which it owns ([ADR 0018](../docs/decisions/0018-user-management.md)). It works
+while the app is down.
+
+- `GET /apps/:name/users` returns `{ available, total, users, next }`. Each user has `id`,
+  `guest` (no sign-up), `createdAt` and `lastSeen` (their most recently used session, or
+  `null`). Pages hold `?limit=` users (default 50, max 200); pass `next` back as `?cursor=` for
+  the older ones. `available` is false if the database has no `auth` schema.
+- `DELETE /apps/:name/users/:id` (a uuid) deletes the user. Their sessions and the app's own
+  rows go with them through their foreign keys.
+- An app without a database answers 409; an unknown app, 404.
 
 ## Settings
 

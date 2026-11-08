@@ -51,6 +51,29 @@ export interface Databases {
   provision(name: string, password: string): Promise<string>
   /** Drops the app's database and role, if they exist. */
   purge(name: string): Promise<void>
+  /** A page of the app's users (ADR 0018), newest first. */
+  listUsers(name: string, page: { limit: number; cursor?: string }): Promise<UserPage>
+  /** Deletes a user; their sessions and the app's rows go with them. False if not found. */
+  deleteUser(name: string, id: string): Promise<boolean>
+}
+
+/** A user of an app, as the dashboard shows it. */
+export interface AppUser {
+  id: string
+  /** A guest (no sign-up) rather than a registered user. */
+  guest: boolean
+  createdAt: string
+  /** When a session of theirs was last used; null if they have none left. */
+  lastSeen: string | null
+}
+
+export interface UserPage {
+  /** False when the app's database has no `auth` schema (it doesn't use the kit). */
+  available: boolean
+  total: number
+  users: AppUser[]
+  /** Pass back as `cursor` for the next (older) page; absent on the last page. */
+  next?: string
 }
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -230,6 +253,22 @@ export class Apps {
       await this.#store.remove(name)
     }
     await this.#reloadCaddy()
+  }
+
+  /** The app's database interface, or why its users can't be shown (404 or 409). */
+  async #userDatabase(name: string): Promise<Databases> {
+    const spec = await this.#store.get(name)
+    if (!spec) throw new AgentError('No such app', 404)
+    if (!spec.database || !this.#databases) throw new AgentError(`${name} has no database`, 409)
+    return this.#databases
+  }
+
+  async listUsers(name: string, page: { limit: number; cursor?: string }): Promise<UserPage> {
+    return (await this.#userDatabase(name)).listUsers(name, page)
+  }
+
+  async deleteUser(name: string, id: string): Promise<boolean> {
+    return (await this.#userDatabase(name)).deleteUser(name, id)
   }
 
   /**

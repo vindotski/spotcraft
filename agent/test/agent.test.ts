@@ -49,6 +49,8 @@ function fakeDocker() {
   }
 }
 
+const GUEST_ID = '8a22a41f-636c-4249-99b7-95aafff1346e'
+
 /** Records database calls; `failing` makes provision throw. */
 function fakeDatabases() {
   const calls: string[][] = []
@@ -61,6 +63,21 @@ function fakeDatabases() {
     },
     async purge(name) {
       calls.push(['purge', name])
+    },
+    async listUsers(name, { limit, cursor }) {
+      calls.push(['listUsers', name, String(limit), cursor ?? ''])
+      return {
+        available: true,
+        total: 1,
+        users: [
+          { id: GUEST_ID, guest: true, createdAt: '2026-11-08T00:00:00.000Z', lastSeen: null },
+        ],
+        next: 'b2xkZXI',
+      }
+    },
+    async deleteUser(name, id) {
+      calls.push(['deleteUser', name, id])
+      return id === GUEST_ID
     },
   }
   return { databases, calls, fail: () => (failing = true) }
@@ -355,6 +372,53 @@ describe('agent', () => {
       db.fail()
       const { failed } = await apps.upgradeDatabases()
       assert.deepEqual(failed, [{ name: 'tagtape', error: 'connection refused' }])
+    })
+
+    describe('users', () => {
+      const get = (url: string) => withDb.inject({ url, headers: auth })
+      const del = (url: string) => withDb.inject({ method: 'DELETE', url, headers: auth })
+
+      it("lists an app's users, passing the page through", async () => {
+        await put(dbSpec)
+        const res = await get('/apps/tagtape/users?limit=10&cursor=b2xkZXI')
+        assert.equal(res.statusCode, 200, res.body)
+        assert.equal(res.json().users[0].id, GUEST_ID)
+        assert.equal(res.json().next, 'b2xkZXI')
+        assert.deepEqual(db.calls.at(-1), ['listUsers', 'tagtape', '10', 'b2xkZXI'])
+        await get('/apps/tagtape/users')
+        assert.deepEqual(db.calls.at(-1), ['listUsers', 'tagtape', '50', ''], 'default limit')
+      })
+
+      it('deletes a user: 204, then 404', async () => {
+        await put(dbSpec)
+        assert.equal((await del(`/apps/tagtape/users/${GUEST_ID}`)).statusCode, 204)
+        const other = '00000000-0000-4000-8000-000000000000'
+        assert.equal((await del(`/apps/tagtape/users/${other}`)).statusCode, 404)
+      })
+
+      it('says why when there are no users to show', async () => {
+        assert.equal((await get('/apps/nope/users')).statusCode, 404, 'no such app')
+        await withDb.inject({
+          method: 'PUT',
+          url: '/apps/plain',
+          headers: auth,
+          payload: { ...spec, domain: 'plain.app' },
+        })
+        assert.equal((await get('/apps/plain/users')).statusCode, 409, 'no database')
+        assert.equal(db.calls.filter(([step]) => step === 'listUsers').length, 0)
+      })
+
+      it('validates ids, limits and cursors before touching the database', async () => {
+        await put(dbSpec)
+        const calls = db.calls.length
+        assert.equal((await del('/apps/tagtape/users/not-a-uuid')).statusCode, 400)
+        assert.equal((await del(`/apps/tagtape/users/${GUEST_ID}';--`)).statusCode, 400)
+        assert.equal((await get('/apps/tagtape/users?limit=0')).statusCode, 400)
+        assert.equal((await get('/apps/tagtape/users?limit=500')).statusCode, 400)
+        assert.equal((await get('/apps/tagtape/users?cursor=a%20b')).statusCode, 400)
+        assert.equal((await get('/apps/tagtape/users?other=1')).statusCode, 400)
+        assert.equal(db.calls.length, calls, 'nothing reached the database')
+      })
     })
   })
 })

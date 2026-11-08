@@ -17,6 +17,8 @@ const normalizeIp = (ip: string) => (ip.startsWith('::ffff:') ? ip.slice(7) : ip
 
 type NameParams = { name: string }
 
+const UUID = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
 const digest = (value: string) => createHash('sha256').update(value).digest()
 
 export function buildApp({ token, apps, allowedIps = [], logger = false }: BuildOptions) {
@@ -120,6 +122,45 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
     async (request, reply) => {
       const removed = await apps.remove(request.params.name, { purge: request.query.purge })
       return removed ? reply.code(204).send() : reply.code(404).send({ error: 'No such app' })
+    },
+  )
+
+  // An app's users (ADR 0018), read and deleted in its own database's `auth` tables.
+  app.get<{ Params: NameParams; Querystring: { limit: number; cursor?: string } }>(
+    '/apps/:name/users',
+    {
+      schema: {
+        params: nameParamsSchema,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            limit: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
+            cursor: { type: 'string', maxLength: 200, pattern: '^[A-Za-z0-9_-]+$' },
+          },
+        },
+      },
+    },
+    async (request) => apps.listUsers(request.params.name, request.query),
+  )
+
+  app.delete<{ Params: NameParams & { id: string } }>(
+    '/apps/:name/users/:id',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['name', 'id'],
+          properties: {
+            ...nameParamsSchema.properties,
+            id: { type: 'string', pattern: UUID },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const deleted = await apps.deleteUser(request.params.name, request.params.id)
+      return deleted ? reply.code(204).send() : reply.code(404).send({ error: 'No such user' })
     },
   )
 

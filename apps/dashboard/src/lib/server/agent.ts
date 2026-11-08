@@ -1,8 +1,8 @@
 import type { AppBody, AppSpec } from '@spotcraft/agent/app-spec'
-import type { AppStatus } from '@spotcraft/agent/apps'
+import type { AppStatus, UserPage } from '@spotcraft/agent/apps'
 import { AGENT_TOKEN, AGENT_URL } from '$app/env/private'
 
-export type { AppSpec, AppStatus }
+export type { AppSpec, AppStatus, UserPage }
 export type AppInput = AppBody
 
 export class AgentUnavailable extends Error {}
@@ -67,6 +67,20 @@ export async function removeApp(name: string, { purge = false } = {}): Promise<v
   const query = purge ? '?purge=true' : ''
   const response = await call(`/apps/${name}${query}`, { method: 'DELETE' }, 120_000)
   if (!response.ok && response.status !== 404) await expectJson(response)
+}
+
+/** A page of the app's users, newest first; `cursor` is the previous page's `next`. */
+export async function listUsers(name: string, cursor?: string): Promise<UserPage> {
+  const query = new URLSearchParams({ limit: '50', ...(cursor ? { cursor } : {}) })
+  return expectJson<UserPage>(await call(`/apps/${name}/users?${query}`))
+}
+
+/** Deletes a user and, through its foreign keys, what the app kept for them. */
+export async function deleteUser(name: string, id: string): Promise<boolean> {
+  const response = await call(`/apps/${name}/users/${id}`, { method: 'DELETE' })
+  if (response.status === 404) return false
+  if (!response.ok) await expectJson(response) // throws with the agent's message
+  return true
 }
 
 export async function appLogs(name: string, tail = 200): Promise<string> {

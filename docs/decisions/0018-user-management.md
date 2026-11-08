@@ -2,7 +2,7 @@
 title: The dashboard lists and deletes an app's users
 number: 18
 status: accepted
-implementation: planned
+implementation: done
 date: 2026-11-08
 supersedes: []
 superseded_by: []
