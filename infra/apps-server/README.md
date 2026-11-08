@@ -41,5 +41,6 @@ first deploy and kept in `.env` (`POSTGRES_SUPERUSER_PASSWORD`); Postgres only u
 when it creates its data directory.
 
 Current state: runs end to end (checked locally with both stacks side by side); the
-provisioning and deploy workflow come next. Postgres runs, but the agent doesn't create
-app databases yet.
+provisioning and deploy workflow come next. The agent creates app databases when an app asks
+for one ([agent README](../../agent/README.md#app-databases)); it reaches Postgres on the `db`
+network as `spotcraft_agent` (`POSTGRES_URL`).

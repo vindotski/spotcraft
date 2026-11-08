@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 import { buildApp } from '../src/app.ts'
-import { Apps } from '../src/apps.ts'
+import { Apps, type Databases } from '../src/apps.ts'
 import type { Runner, RunResult } from '../src/runner.ts'
 import { Store } from '../src/store.ts'
 
@@ -47,6 +47,23 @@ function fakeDocker() {
       fail = match
     },
   }
+}
+
+/** Records database calls; `failing` makes provision throw. */
+function fakeDatabases() {
+  const calls: string[][] = []
+  let failing = false
+  const databases: Databases = {
+    async provision(name, password) {
+      calls.push(['provision', name, password])
+      if (failing) throw new Error('connection refused')
+      return `postgres://app_${name}:${password}@postgres:5432/app_${name}`
+    },
+    async purge(name) {
+      calls.push(['purge', name])
+    },
+  }
+  return { databases, calls, fail: () => (failing = true) }
 }
 
 const spec = {
@@ -216,5 +233,128 @@ describe('agent', () => {
     )
     const again = await app.inject({ method: 'DELETE', url: '/apps/tagtape', headers: auth })
     assert.equal(again.statusCode, 404)
+  })
+
+  describe('app databases', () => {
+    let db: ReturnType<typeof fakeDatabases>
+    let withDb: ReturnType<typeof buildApp>
+    const dbSpec = { ...spec, database: true }
+    const put = (payload: object, target = withDb) =>
+      target.inject({ method: 'PUT', url: '/apps/tagtape', headers: auth, payload })
+
+    beforeEach(() => {
+      db = fakeDatabases()
+      withDb = buildApp({
+        token: TOKEN,
+        apps: new Apps(new Store(dir), docker.run, 'caddy-test', db.databases),
+      })
+    })
+    afterEach(() => withDb.close())
+
+    it('prepares the database and gives the app DATABASE_URL', async () => {
+      const res = await put(dbSpec)
+      assert.equal(res.statusCode, 200, res.body)
+      assert.equal(res.json().database, true)
+      const [[step, name, password]] = db.calls
+      assert.deepEqual([step, name], ['provision', 'tagtape'])
+      assert.match(password, /^[0-9a-f]{48}$/)
+
+      const compose = JSON.parse(await readFile(join(dir, 'apps/tagtape/compose.yaml'), 'utf8'))
+      assert.equal(
+        compose.services.tagtape.environment.DATABASE_URL,
+        `postgres://app_tagtape:${password}@postgres:5432/app_tagtape`,
+      )
+      assert.equal(compose.services.tagtape.environment.TRUST_PROXY, '1')
+    })
+
+    it('keeps the password to itself and reuses it on the next deploy', async () => {
+      await put(dbSpec)
+      await put({ ...dbSpec, tag: '2.0.1' })
+      assert.equal(db.calls.length, 2)
+      assert.equal(db.calls[0][2], db.calls[1][2], 'same password both times')
+
+      const secrets = join(dir, 'apps/tagtape/secrets.json')
+      assert.equal((await stat(secrets)).mode & 0o777, 0o600)
+      const shown = await withDb.inject({ url: '/apps/tagtape', headers: auth })
+      assert.doesNotMatch(shown.body, new RegExp(db.calls[0][2]))
+      assert.doesNotMatch(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'), /password/i)
+    })
+
+    it('changes nothing when the database cannot be prepared', async () => {
+      db.fail()
+      const res = await put(dbSpec)
+      assert.equal(res.statusCode, 502)
+      assert.match(res.json().output, /connection refused/)
+      await assert.rejects(stat(join(dir, 'apps/tagtape')))
+      assert.equal(docker.calls.length, 0, 'nothing reaches docker')
+    })
+
+    it('refuses a database on a server without Postgres, and DATABASE_URL in env', async () => {
+      assert.equal((await put(dbSpec, app)).statusCode, 409)
+      const own = await put({ ...dbSpec, env: { DATABASE_URL: 'postgres://elsewhere/db' } })
+      assert.equal(own.statusCode, 400)
+      // Without a Spotcraft database, an app may point DATABASE_URL anywhere.
+      const external = await put({ ...spec, env: { DATABASE_URL: 'postgres://elsewhere/db' } })
+      assert.equal(external.statusCode, 200)
+      assert.equal(db.calls.length, 0)
+    })
+
+    it('keeps the database setting when an update leaves it out', async () => {
+      await put(dbSpec)
+      const { database: _, ...withoutField } = dbSpec
+      const res = await put({ ...withoutField, tag: '2.0.1' })
+      assert.equal(res.json().database, true)
+      const compose = JSON.parse(await readFile(join(dir, 'apps/tagtape/compose.yaml'), 'utf8'))
+      assert.ok(compose.services.tagtape.environment.DATABASE_URL)
+      // A new app without the field gets no database.
+      const fresh = await withDb.inject({
+        method: 'PUT',
+        url: '/apps/fresh',
+        headers: auth,
+        payload: { ...withoutField, domain: 'fresh.app' },
+      })
+      assert.equal(fresh.json().database, false)
+    })
+
+    it('keeps the database when an app is removed, unless asked to purge it', async () => {
+      await put(dbSpec)
+      const keep = await withDb.inject({ method: 'DELETE', url: '/apps/tagtape', headers: auth })
+      assert.equal(keep.statusCode, 204)
+      assert.deepEqual(
+        db.calls.map(([step]) => step),
+        ['provision'],
+      )
+
+      await put(dbSpec)
+      const del = await withDb.inject({
+        method: 'DELETE',
+        url: '/apps/tagtape?purge=true',
+        headers: auth,
+      })
+      assert.equal(del.statusCode, 204)
+      assert.deepEqual(db.calls.at(-1), ['purge', 'tagtape'])
+      const bad = await withDb.inject({ method: 'DELETE', url: '/apps/x?other=1', headers: auth })
+      assert.equal(bad.statusCode, 400)
+    })
+
+    it('upgrades every app database, carrying on past failures', async () => {
+      await put(dbSpec)
+      await withDb.inject({
+        method: 'PUT',
+        url: '/apps/plain',
+        headers: auth,
+        payload: { ...spec, domain: 'plain.app' },
+      })
+      const apps = new Apps(new Store(dir), docker.run, 'caddy-test', db.databases)
+      db.calls.length = 0
+      assert.deepEqual(await apps.upgradeDatabases(), { upgraded: ['tagtape'], failed: [] })
+      assert.deepEqual(
+        db.calls.map(([step, name]) => [step, name]),
+        [['provision', 'tagtape']],
+      )
+      db.fail()
+      const { failed } = await apps.upgradeDatabases()
+      assert.deepEqual(failed, [{ name: 'tagtape', error: 'connection refused' }])
+    })
   })
 })

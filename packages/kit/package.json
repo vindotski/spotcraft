@@ -4,7 +4,23 @@
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./schema": {
+      "source": "./src/schema.ts",
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
+    },
+    "./provision": {
+      "source": "./src/provision.ts",
+      "types": "./dist/provision.d.ts",
+      "default": "./dist/provision.js"
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/migrations', 'dist/migrations', { recursive: true })\"",
     "typecheck": "tsc",
     "test": "node --test 'test/**/*.test.ts'"
   },
@@ -16,9 +32,5 @@
     "@types/node": "catalog:",
     "@types/pg": "^8.23.1",
     "typescript": "catalog:"
-  },
-  "exports": {
-    "./schema": "./src/schema.ts",
-    "./provision": "./src/provision.ts"
   }
 }

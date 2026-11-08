@@ -14,6 +14,9 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 - **Postgres** on the apps server (`postgres` service, Postgres 18), the base for databases for
   hosted apps. Reachable only inside Docker; the superuser only over the local socket.
+- **App databases** in the agent's API: `database: true` gives an app its own Postgres role and
+  database as `DATABASE_URL`. Removing an app keeps its database unless `?purge=true`. When
+  the agent starts, it brings every app database up to date.
 
 ### Changed
 

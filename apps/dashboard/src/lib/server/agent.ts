@@ -1,9 +1,9 @@
-import type { AppSpec } from '@spotcraft/agent/app-spec'
+import type { AppBody, AppSpec } from '@spotcraft/agent/app-spec'
 import type { AppStatus } from '@spotcraft/agent/apps'
 import { AGENT_TOKEN, AGENT_URL } from '$app/env/private'
 
 export type { AppSpec, AppStatus }
-export type AppInput = Omit<AppSpec, 'name'>
+export type AppInput = AppBody
 
 export class AgentUnavailable extends Error {}
 

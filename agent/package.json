@@ -5,16 +5,19 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.ts",
+    "dev": "node --conditions=source --watch src/index.ts",
     "start": "node src/index.ts",
     "typecheck": "tsc",
-    "test": "node --test 'test/**/*.test.ts'"
+    "test": "node --conditions=source --test 'test/**/*.test.ts'"
   },
   "dependencies": {
+    "@spotcraft/kit": "workspace:*",
     "fastify": "^5.12.8"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "typescript": "catalog:"
   },
   "exports": {

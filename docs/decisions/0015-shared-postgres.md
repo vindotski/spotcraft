@@ -6,7 +6,7 @@ implementation: planned
 date: 2026-11-08
 supersedes: []
 superseded_by: []
-notes: "First stateful service for hosted apps; backups are the next decision."
+notes: "First stateful service for hosted apps; backups are the next decision. As built, the app's database password is kept in apps/<name>/secrets.json (mode 600) rather than app.json, so the agent's API never returns it."
 ---
 
 # One Postgres on the apps server, a database per app

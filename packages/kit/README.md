@@ -3,7 +3,10 @@
 The backend kit for apps hosted on Spotcraft ([ADR 0016](../../docs/decisions/0016-backend-kit.md)).
 So far it holds the `auth` schema and the code that gives an app its own database
 ([ADR 0015](../../docs/decisions/0015-shared-postgres.md)). Guest accounts for apps come next.
-Source-only for now, like the agent: Node runs the TypeScript directly.
+In the workspace, Node runs the TypeScript source through the `source` export condition
+(`node --conditions=source`, `customConditions` in `tsconfig.json`). Anything that installs the
+kit into `node_modules`, like the agent's image, uses the build: `pnpm --filter @spotcraft/kit
+build` writes JavaScript, type declarations and the migrations to `dist/`.
 
 | Export        | What                                                                      |
 | ------------- | ------------------------------------------------------------------------- |

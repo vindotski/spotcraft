@@ -10,7 +10,9 @@ FROM --platform=$BUILDPLATFORM node:26.13.0-slim@sha256:5adad64f9a1fca2d51972caa
 RUN npm install --global pnpm@12.4.1
 WORKDIR /repo
 COPY . .
-RUN pnpm install --frozen-lockfile --filter @spotcraft/agent \
+# The kit (app databases) ships as built JavaScript: Node won't run TypeScript from node_modules.
+RUN pnpm install --frozen-lockfile --filter @spotcraft/agent... \
+  && pnpm --filter @spotcraft/kit build \
   && pnpm --filter @spotcraft/agent deploy --prod /out
 
 # Distroless: Node and nothing else (no shell, no package manager), far fewer CVEs than slim.

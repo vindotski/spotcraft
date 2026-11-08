@@ -13,9 +13,10 @@ const escapeCompose = (value: string) => value.replaceAll('$', '$$$$')
  * The app's compose file. Written as JSON (valid YAML), so values never need YAML escaping.
  * Hardened by default: no capabilities, no privilege escalation, resource limits.
  */
-export function renderCompose(app: AppSpec): string {
+export function renderCompose(app: AppSpec, databaseUrl?: string): string {
+  const all = databaseUrl ? { ...app.env, DATABASE_URL: databaseUrl } : app.env
   const env = Object.fromEntries(
-    Object.entries(app.env).map(([key, value]) => [key, escapeCompose(value)]),
+    Object.entries(all).map(([key, value]) => [key, escapeCompose(value)]),
   )
   const service: Record<string, unknown> = {
     image: `${app.image}:${app.tag}`,
