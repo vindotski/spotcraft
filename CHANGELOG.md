@@ -27,7 +27,9 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
   app locally and on Spotcraft.
 - **Backend kit** (`packages/kit`): guest accounts for server-rendered apps on Better Auth,
   server-only (an httpOnly session cookie, no auth routes), with a guest limit per client
-  address and a check of the `auth` schema version.
+  address and a check of the `auth` schema version. `currentGuest` reads without creating,
+  so apps create guests only when a visitor saves something, not for every page view or
+  crawler.
 - **App users**: for apps with a database, the dashboard lists their users (guests and
   registered, created, last seen) and deletes one with everything the app kept for them; the
   agent's API has `GET /apps/:name/users` and `DELETE /apps/:name/users/:id`.

@@ -186,7 +186,40 @@ describe('guests', { skip: !SUPERUSER_URL && 'KIT_TEST_POSTGRES_URL is not set' 
       )
     } finally {
       await kit.close()
-      await provision(adminUrl(), { name: APP, password: APP_PASSWORD }).catch(() => {})
+      // Put the version back as it was (the tables are still there; only the record went).
+      await query(
+        urlFor(ADMIN, ADMIN_PASSWORD, appDatabaseName(APP)),
+        "INSERT INTO auth.kit_migrations (version, name) VALUES (1, 'auth')",
+      )
+    }
+  })
+  it('creates no guest for reads, only for the first write', async () => {
+    const kit = backend()
+    const count = async () =>
+      (await query<{ n: number }>(appUrl(), 'SELECT count(*)::int AS n FROM auth.users')).rows[0].n
+    try {
+      const before = await count()
+      // A first visit: the page and its parallel requests (favicon…), and a bot, all cookieless.
+      const reads = await Promise.all([1, 2, 3].map(() => kit.currentGuest(request())))
+      assert.deepEqual(
+        reads.map((r) => r.guest),
+        [null, null, null],
+      )
+      assert.ok(
+        reads.every((r) => !r.headers.getSetCookie().some((c) => c.includes('session_token='))),
+      )
+      assert.equal(await count(), before, 'reading creates nobody')
+
+      // The visitor saves something: now they get a guest, exactly one.
+      const write = await kit.guest(request(), client)
+      assert.equal(await count(), before + 1)
+      const later = await kit.currentGuest(request(write.headers))
+      assert.equal(later.guest?.id, write.guest.id)
+      // A write with the cookie reuses the guest.
+      assert.equal((await kit.guest(request(write.headers), client)).guest.id, write.guest.id)
+      assert.equal(await count(), before + 1)
+    } finally {
+      await kit.close()
     }
   })
 })

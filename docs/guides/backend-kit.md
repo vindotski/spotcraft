@@ -1,8 +1,8 @@
 # Guest accounts with the backend kit
 
 The backend kit, `@spotcraft/kit`, gives a server-rendered app **guest accounts**. A visitor
-gets an account on their first request, without signing up, and the app keeps their data under
-its id. The data lives in the app's own Postgres database on the apps server. Locally, the
+gets an account the first time they save something, without signing up, and the app keeps their
+data under its id. The data lives in the app's own Postgres database on the apps server. Locally, the
 `spotcraft dev` command runs the same setup. Why it works this way is in
 [ADR 0016](../decisions/0016-backend-kit.md) and [ADR 0017](../decisions/0017-local-stack.md).
 
@@ -66,19 +66,27 @@ export function backend(): Backend {
 }
 ```
 
-**Give every request its guest** in a hook, and **copy the kit's headers onto the response**.
-They set the session cookie on the first visit and renew it later.
+**Look up the visitor's guest in a hook, and create one only on writes.** Reads (`GET`,
+`HEAD`) use `currentGuest`, which never creates a guest. The first write (a form post) uses
+`guest()`, which creates one if needed. If every request created a guest, a first visit would
+make several: the page and its parallel requests, such as `/favicon.ico`, each arrive before the
+cookie exists. Every crawler would make one too, and nobody would ever come back to them.
+**Copy the kit's headers onto the response**: they set the session cookie and renew it.
 
 ```ts
 // src/hooks.server.ts
 import { GuestLimitError } from '@spotcraft/kit'
-import type { Handle } from '@sveltejs/kit'
+import type { Handle } from '@sveltejs/kit/hooks'
 import { backend } from '#lib/server/backend.ts'
 
 export const handle: Handle = async ({ event, resolve }) => {
+  const kit = backend()
+  const reading = event.request.method === 'GET' || event.request.method === 'HEAD'
   let session
   try {
-    session = await backend().guest(event.request, { clientAddress: event.getClientAddress() })
+    session = reading
+      ? await kit.currentGuest(event.request)
+      : await kit.guest(event.request, { clientAddress: event.getClientAddress() })
   } catch (error) {
     if (error instanceof GuestLimitError) {
       return new Response('Too many new visitors; try again soon.', {
@@ -95,9 +103,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 }
 ```
 
-Type `event.locals.guest` with the kit's `Guest` in `src/app.d.ts`. SvelteKit 3 has no
-`$lib` alias; the snippets use the `#lib/*` import from `package.json`
-(`"imports": { "#lib/*": "./src/lib/*" }`).
+Type `event.locals.guest` as `Guest | null` (the kit's `Guest`) in `src/app.d.ts`: it is
+`null` until the visitor saves something. SvelteKit 3 has no `$lib` alias; the snippets use
+the `#lib/*` import from `package.json` (`"imports": { "#lib/*": "./src/lib/*" }`).
 
 **Import the kit only from server code**: hooks, `+page.server.ts`, `+server.ts`, and server-only
 modules. A client bundle that imports it fails to build. The browser never talks to auth or the
@@ -124,10 +132,19 @@ export const notes = pgTable('notes', {
 
 ```ts
 // src/routes/+page.server.ts
-const { db } = backend()
-export const load = async ({ locals }) => ({
-  notes: await db.select().from(notes).where(eq(notes.userId, locals.guest.id)),
-})
+export const load = async ({ locals }) => {
+  if (!locals.guest) return { notes: [] } // hasn't saved anything yet
+  const { db } = backend()
+  return { notes: await db.select().from(notes).where(eq(notes.userId, locals.guest.id)) }
+}
+
+export const actions = {
+  // A form post: the hook has created the guest if this is their first write.
+  default: async ({ request, locals }) => {
+    const body = String((await request.formData()).get('body') ?? '')
+    await backend().db.insert(notes).values({ userId: locals.guest!.id, body })
+  },
+}
 ```
 
 The app runs its own migrations for `public`, for example with drizzle-kit.
@@ -160,3 +177,5 @@ dashboard keeps its database too, unless you also choose to delete it.
 - Guests get the name "Anonymous" and a placeholder email; the id is what to use.
 - New guests are limited to 30 per client address per 10 minutes. Returning guests never are.
   Pass `guestLimit` to `createBackend` to change it.
+- Only writes create guests, so the users list in the dashboard shows visitors who saved
+  something, not every page view or crawler.

@@ -43,8 +43,15 @@ export interface Backend {
   /** Drizzle over the app's database; the app keeps its own tables in `public`. */
   db: NodePgDatabase
   /**
-   * The visitor's guest account, created on the first request without one. Send `headers`
-   * with the response: they set or refresh the session cookie (empty when nothing changed).
+   * The visitor's guest, if they have one; never creates one. Use it for reading (page views,
+   * GET requests), so favicons, parallel first requests and bots don't each make a guest that
+   * nobody comes back to. Send `headers` with the response: they refresh the session cookie.
+   */
+  currentGuest(request: Request): Promise<{ guest: Guest | null; headers: Headers }>
+  /**
+   * The visitor's guest, created if they have none: use it when the visitor saves something
+   * (form posts and other writes). Send `headers` with the response: they set the session
+   * cookie. New guests are limited per client address (`GuestLimitError`).
    */
   guest(
     request: Request,
@@ -125,15 +132,21 @@ export function createBackend(options: BackendOptions): Backend {
     return ready
   }
 
+  /** The session's guest, if the request carries a valid one (refreshing it when due). */
+  async function readGuest(request: Request) {
+    await checkSchema()
+    const current = await auth.api.getSession({ headers: request.headers, returnHeaders: true })
+    const user = current.response?.user
+    const guest = user ? { id: user.id, createdAt: new Date(user.createdAt) } : null
+    return { guest, headers: current.headers }
+  }
+
   return {
     db,
+    currentGuest: readGuest,
     async guest(request, { clientAddress }) {
-      await checkSchema()
-      const current = await auth.api.getSession({ headers: request.headers, returnHeaders: true })
-      if (current.response?.user) {
-        const { id, createdAt } = current.response.user
-        return { guest: { id, createdAt: new Date(createdAt) }, headers: current.headers }
-      }
+      const current = await readGuest(request)
+      if (current.guest) return { guest: current.guest, headers: current.headers }
       limit(clientAddress)
       const created = await auth.api.signInAnonymous({
         headers: request.headers,

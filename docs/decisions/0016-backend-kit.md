@@ -6,7 +6,7 @@ implementation: done
 date: 2026-11-08
 supersedes: []
 superseded_by: []
-notes: "Sign-up, sign-in, email, banning and guest pruning come later, each with its own record. Confirmed while building (Better Auth 1.7): guests get the name Anonymous and a unique placeholder email; generateId: uuid lets Postgres generate the ids; guests are created and read server-side with auth.api and returnHeaders. For later: when a guest signs up, Better Auth creates a new user, calls onLinkAccount with both, then deletes the guest, so moving their data will use that hook."
+notes: "Sign-up, sign-in, email, banning and guest pruning come later, each with its own record. Confirmed while building (Better Auth 1.7): guests get the name Anonymous and a unique placeholder email; generateId: uuid lets Postgres generate the ids; guests are created and read server-side with auth.api and returnHeaders. Also added while building: currentGuest(request) reads the guest without creating one, and apps create guests only on writes. Otherwise a first visit made several guests (the page and its parallel requests, such as the favicon, arrive before the cookie exists), and so did every crawler. For later: when a guest signs up, Better Auth creates a new user, calls onLinkAccount with both, then deletes the guest, so moving their data will use that hook."
 ---
 
 # A server-only backend kit, starting with guest accounts

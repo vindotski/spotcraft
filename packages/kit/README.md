@@ -28,11 +28,19 @@ export const backend = backendFromEnv() // DATABASE_URL, AUTH_SECRET, PUBLIC_URL
 ```
 
 ```ts
-// in a request handler: the visitor's guest, created on the first request
+// reading (GET): the visitor's guest if they have one; never creates one
+const { guest, headers } = await backend.currentGuest(request) // guest: Guest | null
+
+// writing (a form post): their guest, created if they have none yet
 const { guest, headers } = await backend.guest(request, { clientAddress })
-// …use guest.id as the owner of the app's rows, then send `headers` with the response:
+
+// …use guest.id as the owner of the app's rows, and send `headers` with the response:
 // they set or refresh the session cookie.
 ```
+
+Create guests only on writes. If every request created one, a first visit would make several
+(the page and its parallel requests, such as `/favicon.ico`, all arrive before the cookie
+exists), and so would every crawler.
 
 - **Server-only.** No auth routes are mounted and there is no client SDK. The browser only
   carries the session cookie (`httpOnly`, `SameSite=Lax`, `Secure` on https, path `/`).
