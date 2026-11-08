@@ -86,6 +86,8 @@ In the dashboard, choose **Add app** and fill in:
 - **Domain**: e.g. `blog.example.com`. Point its A and AAAA records at the **apps server**
   (DNS only, if on Cloudflare). A root domain like `example.com` also gets `www.` redirected.
 - **Container port**, **memory** and **CPU** limits, and **environment variables**.
+- **Database**: tick it to give the app its own Postgres database on the apps server, as
+  `DATABASE_URL`. Removing the app keeps the database unless you also choose to delete it.
 
 **Deploy** pulls the image, waits until the app is healthy and switches traffic to it. If
 anything fails, you see why, and the previous version keeps running. The certificate arrives

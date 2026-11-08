@@ -4,7 +4,7 @@
 
   let { form }: PageProps = $props()
 
-  const empty = { name: '', image: '', tag: '', domain: '', port: '3000', memory: '512m', cpus: '1', readOnly: true, env: '' }
+  const empty = { name: '', image: '', tag: '', domain: '', port: '3000', memory: '512m', cpus: '1', readOnly: true, database: false, env: '' }
 </script>
 
 <svelte:head><title>Add app · Spotcraft</title></svelte:head>

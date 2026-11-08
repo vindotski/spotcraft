@@ -19,6 +19,7 @@ export interface AppFormValues {
   memory: string
   cpus: string
   readOnly: boolean
+  database: boolean
   env: string
 }
 
@@ -47,6 +48,7 @@ export function parseAppForm(
     memory: text('memory') || '512m',
     cpus: text('cpus') || '1',
     readOnly: data.get('readOnly') === 'on',
+    database: data.get('database') === 'on',
     env: String(data.get('env') ?? ''),
   }
   const errors: AppFormErrors = {}
@@ -82,6 +84,9 @@ export function parseAppForm(
     }
     env[key] = line.slice(equals + 1)
   }
+  if (!errors.env && values.database && 'DATABASE_URL' in env) {
+    errors.env = 'Remove DATABASE_URL: Spotcraft sets it when the app has a database.'
+  }
 
   if (Object.keys(errors).length > 0) return { values, errors }
   return {
@@ -95,6 +100,7 @@ export function parseAppForm(
       memory: values.memory,
       cpus,
       readOnly: values.readOnly,
+      database: values.database,
       env,
     },
   }

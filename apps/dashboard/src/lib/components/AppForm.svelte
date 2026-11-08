@@ -15,6 +15,7 @@
     memory: string
     cpus: string
     readOnly: boolean
+    database: boolean
     env: string
   }
 
@@ -133,6 +134,16 @@
       <span class="text-sm">
         Read-only filesystem
         <span class="block text-xs text-muted-foreground">Recommended. The app can still write to a small /tmp.</span>
+      </span>
+    </label>
+
+    <label class="flex items-start gap-3 sm:col-span-2">
+      <input type="checkbox" name="database" checked={values.database} class="mt-1 size-4 accent-foreground" />
+      <span class="text-sm">
+        Database
+        <span class="block text-xs text-muted-foreground">
+          Its own Postgres database on the apps server, given to the app as DATABASE_URL. Turning this off later keeps the data.
+        </span>
       </span>
     </label>
   </div>

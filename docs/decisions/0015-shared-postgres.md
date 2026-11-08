@@ -2,7 +2,7 @@
 title: One Postgres on the apps server, a database per app
 number: 15
 status: accepted
-implementation: planned
+implementation: done
 date: 2026-11-08
 supersedes: []
 superseded_by: []

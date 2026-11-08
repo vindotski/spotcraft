@@ -17,6 +17,7 @@ export const load: PageServerLoad = async ({ params }) => {
       memory: app.memory,
       cpus: String(app.cpus),
       readOnly: app.readOnly,
+      database: app.database,
       env: envToText(app.env),
     },
     tags: await dockerHubTags(app.image),

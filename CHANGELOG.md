@@ -17,6 +17,8 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 - **App databases** in the agent's API: `database: true` gives an app its own Postgres role and
   database as `DATABASE_URL`. Removing an app keeps its database unless `?purge=true`. When
   the agent starts, it brings every app database up to date.
+- **Dashboard**: a Database checkbox when adding or editing an app, the database in the app's
+  settings, and "Also delete its database" when removing it.
 
 ### Changed
 

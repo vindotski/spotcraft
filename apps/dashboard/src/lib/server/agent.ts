@@ -62,8 +62,10 @@ export async function deployApp(
   }
 }
 
-export async function removeApp(name: string): Promise<void> {
-  const response = await call(`/apps/${name}`, { method: 'DELETE' }, 120_000)
+/** Removes the app; with `purge`, also deletes its database. Throws with the agent's message. */
+export async function removeApp(name: string, { purge = false } = {}): Promise<void> {
+  const query = purge ? '?purge=true' : ''
+  const response = await call(`/apps/${name}${query}`, { method: 'DELETE' }, 120_000)
   if (!response.ok && response.status !== 404) await expectJson(response)
 }
 
