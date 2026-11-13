@@ -34,6 +34,8 @@ const app = buildApp({
   logger: { level: config.logLevel },
 })
 
+for (const notice of config.notices) app.log.warn(notice)
+
 // Finish in-flight requests (a deploy may be running) before exiting on stop.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

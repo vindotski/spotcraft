@@ -486,9 +486,20 @@ describe('Cloudflare config', () => {
     const withAccess = loadConfig({ ...base, ...cf, CLOUDFLARE_ACCESS_POLICY_ID: policy })
     assert.equal(withAccess.cloudflare?.accessPolicyId, policy)
   })
-  it('refuses a token without the tunnel, the apps domain or valid ids', () => {
-    assert.throws(() => loadConfig({ ...base, ...cf, EDGE: 'direct' }))
-    assert.throws(() => loadConfig({ ...base, ...cf, APPS_DOMAIN: '' }))
+  it('ignores the settings, with a notice, until EDGE=cloudflare and APPS_DOMAIN are set', () => {
+    for (const env of [
+      { ...base, ...cf, EDGE: 'direct' },
+      { ...base, ...cf, APPS_DOMAIN: '' },
+    ]) {
+      const config = loadConfig(env)
+      assert.equal(config.cloudflare, undefined, 'the agent still starts')
+      assert.match(config.notices[0] ?? '', /CLOUDFLARE_API_TOKEN is set but unused/)
+    }
+    assert.deepEqual(loadConfig({ ...base, ...cf }).notices, [])
+  })
+
+  it('refuses invalid ids once the settings are in use', () => {
+    assert.throws(() => loadConfig({ ...base, ...cf, CLOUDFLARE_ACCOUNT_ID: 'x' }))
     assert.throws(() => loadConfig({ ...base, ...cf, CLOUDFLARE_TUNNEL_ID: 'x' }))
     assert.throws(() => loadConfig({ ...base, ...cf, CLOUDFLARE_ACCESS_POLICY_ID: 'x' }))
   })
