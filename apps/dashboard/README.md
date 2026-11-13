@@ -22,6 +22,9 @@ VictoriaMetrics. It has no database: the agent's files are the app list.
 its database" is ticked in the Remove dialog. If that delete fails after the app is gone, the
 error page says so.
 
+Signed-in pages end with the running Spotcraft version (from the dashboard's `package.json`,
+which carries the project's version), linked to its release notes. It isn't shown before login.
+
 A failed deploy shows the agent's error and command output; the previous version keeps
 running. Metrics are optional: without VictoriaMetrics the pages show "No data yet".
 
