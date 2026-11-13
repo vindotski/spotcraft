@@ -164,8 +164,9 @@ while the app is down.
 | `CLOUDFLARE_*`    | —                        | custom domains, Access (see below)    |
 | `LOG_LEVEL`       | `info`                   | log level                             |
 
-The image is distroless Node 26 (no shell or package manager) plus the static Docker CLI and
-Compose plugin. It runs as uid 1000 and reaches Docker through the socket's group (`group_add`
+The agent runs from the `spotcraft` image (the root `Dockerfile`, shared with the dashboard;
+Compose starts it with `working_dir: /app/agent` and `command: ["src/index.ts"]`): distroless
+Node 26 (no shell or package manager) plus the static Docker CLI and Compose plugin. It runs as uid 1000 and reaches Docker through the socket's group (`group_add`
 with `DOCKER_GID`); the Docker CLI keeps its config in `/tmp` so the root filesystem can be
 read-only. Mounting the Docker socket still makes the agent
 equivalent to root on the server; the private-network binding and the token protect it.
@@ -177,5 +178,5 @@ because Node won't run TypeScript from `node_modules`.
 ```sh
 pnpm --filter @spotcraft/agent test        # node:test; the database test needs KIT_TEST_POSTGRES_URL
 pnpm --filter @spotcraft/agent typecheck
-docker build -f agent/Dockerfile .         # from the repository root
+docker build .                             # the spotcraft image, from the repository root
 ```

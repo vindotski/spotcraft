@@ -22,7 +22,7 @@ updates:
       actions: { patterns: ["*"] }
 
   - package-ecosystem: docker
-    directories: [/agent, /apps/dashboard]
+    directories: [/]
     schedule: { interval: weekly }
     cooldown: { default-days: 1 }
     groups:

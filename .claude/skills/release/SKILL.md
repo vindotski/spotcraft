@@ -34,7 +34,7 @@ first, they win over this skill. The user merges, tags and pushes; you prepare a
 git tag -s vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z
 ```
 
-CI verifies the tagged commit and publishes the images (`X.Y.Z`, `X.Y`) and the npm packages.
+CI verifies the tagged commit and publishes the `spotcraft` image (`X.Y.Z`, `X.Y`) and the npm packages.
 Then they run the Deploy workflow with the tag. Afterwards, check the CI run and the published
 versions (`npm view spotcraft version`, `docker manifest inspect`), and tell the user what is
 live. Never create or push tags yourself.

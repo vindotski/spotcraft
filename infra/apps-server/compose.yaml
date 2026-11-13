@@ -63,7 +63,10 @@ services:
 
   agent:
     <<: *hardened
-    image: ${SPOTCRAFT_AGENT_IMAGE:-vindotski/spotcraft-agent}:${SPOTCRAFT_TAG:-latest}
+    # The one Spotcraft image, running the agent (ADR 0025).
+    image: ${SPOTCRAFT_IMAGE:-vindotski/spotcraft}:${SPOTCRAFT_TAG:-latest}
+    working_dir: /app/agent
+    command: ["src/index.ts"]
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev
@@ -71,6 +74,9 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 4000
+      # The Docker CLI keeps its config under HOME; /tmp is the only writable place.
+      HOME: /tmp
+      DOCKER_CONFIG: /tmp/.docker
       AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
       # Only the ops server's dashboard may call the agent; hosted apps are turned away.
       AGENT_ALLOWED_IPS: ${OPS_PRIVATE_IP:-10.0.0.3}
@@ -100,6 +106,18 @@ services:
       # Same paths as on the host; owned by uid 1000, the agent's user.
       - ./apps:/opt/spotcraft/apps # app.json + compose.yaml per app
       - ./sites:/opt/spotcraft/sites # Caddy site block per app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/nodejs/bin/node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   # One Postgres for every hosted app that asks for a database (ADR 0015): each app gets its
   # own role and database, created by the agent as `spotcraft_agent` (set up by the deploy

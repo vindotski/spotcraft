@@ -13,7 +13,7 @@ that supersedes the old one; old records are never rewritten.
 | 0006 | [Shared UI package with shadcn-svelte](0006-shared-ui.md)                                  | accepted                                     |
 | 0007 | [App state lives on the apps server; agent API](0007-app-state-on-apps-server.md)          | accepted                                     |
 | 0008 | [Dashboard login with one admin password](0008-dashboard-login.md)                         | accepted, partly superseded by 0023          |
-| 0009 | [Multi-arch images on Docker Hub, built by CI](0009-images-on-docker-hub.md)               | accepted                                     |
+| 0009 | [Multi-arch images on Docker Hub, built by CI](0009-images-on-docker-hub.md)               | accepted, partly superseded by 0025          |
 | 0010 | [Hetzner ARM servers, deploy user only, one first-boot template](0010-hetzner-servers.md)  | accepted                                     |
 | 0011 | [Spotcraft deploys itself with a manual GitHub workflow over SSH](0011-deploy-workflow.md) | accepted                                     |
 | 0012 | [Hardening from the v0.1.0 audit](0012-hardening-before-v0-1.md)                           | accepted                                     |
@@ -28,3 +28,4 @@ that supersedes the old one; old records are never rewritten.
 | 0022 | [Taking over a custom domain's DNS records is an app setting](0022-takeover-setting.md)    | accepted                                     |
 | 0023 | [A Cloudflare Access sign-in also signs in to the dashboard](0023-access-sign-in.md)       | accepted                                     |
 | 0024 | [The website is plain Astro, published on GitHub Pages](0024-website-on-pages.md)          | accepted                                     |
+| 0025 | [One image runs the agent and the dashboard as two containers](0025-one-image.md)          | accepted                                     |

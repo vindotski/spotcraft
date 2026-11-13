@@ -5,7 +5,7 @@
 #
 #   ROLE                      apps | ops
 #   SPOTCRAFT_TAG             image tag to run, e.g. sha-abc1234 or latest
-#   IMAGE_NAMESPACE           Docker Hub user that publishes spotcraft-agent/-dashboard
+#   IMAGE_NAMESPACE           Docker Hub user that publishes the spotcraft image
 #   AGENT_TOKEN               shared by the agent and the dashboard
 #   apps: PRIVATE_IP          this server's private address
 #   apps: OPS_PRIVATE_IP      the ops server's private address (the only agent client)
@@ -92,7 +92,7 @@ case "$ROLE" in
 PRIVATE_IP=$PRIVATE_IP
 OPS_PRIVATE_IP=$OPS_PRIVATE_IP
 SPOTCRAFT_TAG=$SPOTCRAFT_TAG
-SPOTCRAFT_AGENT_IMAGE=$IMAGE_NAMESPACE/spotcraft-agent
+SPOTCRAFT_IMAGE=$IMAGE_NAMESPACE/spotcraft
 AGENT_TOKEN=$AGENT_TOKEN
 DOCKER_GID=$DOCKER_GID
 POSTGRES_AGENT_PASSWORD=$POSTGRES_AGENT_PASSWORD
@@ -118,7 +118,7 @@ ENV
 DASHBOARD_DOMAIN=$DASHBOARD_DOMAIN
 APPS_PRIVATE_IP=$APPS_PRIVATE_IP
 SPOTCRAFT_TAG=$SPOTCRAFT_TAG
-SPOTCRAFT_DASHBOARD_IMAGE=$IMAGE_NAMESPACE/spotcraft-dashboard
+SPOTCRAFT_IMAGE=$IMAGE_NAMESPACE/spotcraft
 AGENT_TOKEN=$AGENT_TOKEN
 DASHBOARD_PASSWORD_HASH=$DASHBOARD_PASSWORD_HASH
 SESSION_SECRET=$SESSION_SECRET

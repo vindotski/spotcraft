@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag of spotcraft-agent and spotcraft-dashboard (latest or sha-abc1234)"
+        description: "Tag of the spotcraft image (latest, 0.4.0 or sha-abc1234)"
         required: true
         default: latest
 
@@ -65,9 +65,8 @@ jobs:
               exit 1
             fi
           done
-          # Fail before touching a server if either image was never published.
-          docker manifest inspect "$NAMESPACE/spotcraft-agent:$TAG" > /dev/null
-          docker manifest inspect "$NAMESPACE/spotcraft-dashboard:$TAG" > /dev/null
+          # Fail before touching a server if the image was never published.
+          docker manifest inspect "$NAMESPACE/spotcraft:$TAG" > /dev/null
 
       # Plain ssh/scp, no third-party action. Host keys are pinned via a secret, so a
       # man-in-the-middle can't impersonate either server.

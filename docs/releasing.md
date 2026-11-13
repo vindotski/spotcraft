@@ -9,7 +9,7 @@ How a Spotcraft version is released. What a version promises is in
 2. In `CHANGELOG.md`, rename `Unreleased` to the version and date, and add its compare link.
 3. Merge to `main`, then tag and push: `git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0`.
 4. CI verifies the tagged commit, then publishes:
-   - the images `0.2.0` and `0.2`;
+   - the `spotcraft` image, tagged `0.2.0` and `0.2`;
    - `@spotcraft/kit` and `spotcraft` on npm (`latest`, or `next` for a pre-release), with
      provenance. A version already on npm is skipped, so a failed run can be re-run.
 5. Deploy it with the Deploy workflow.

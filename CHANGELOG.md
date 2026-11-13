@@ -28,6 +28,11 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Removed
 
+- **The `spotcraft-agent` and `spotcraft-dashboard` images**: one image, `spotcraft`, now runs
+  both as two containers ([ADR 0025](docs/decisions/0025-one-image.md)). **Breaking:** take the
+  new `infra/*/compose.yaml` files (the deploy copies them), which use `SPOTCRAFT_IMAGE`; a
+  fork publishes `<DOCKERHUB_USERNAME>/spotcraft`. Run the Deploy workflow with a tag of the
+  new image. The old images stay on Docker Hub but get no new versions.
 - The `spotcraft-site` image is no longer built or published; the site isn't an app on the
   apps server any more.
 

@@ -57,8 +57,9 @@ can create databases and roles but is not a superuser.
 
 **Spotcraft's own containers** run without capabilities (Caddy keeps `NET_BIND_SERVICE` for ports
 80 and 443), with `no-new-privileges`, read-only root filesystems where the software allows,
-limits and health checks. None runs privileged. The agent and dashboard images are distroless
-(no shell, no package manager).
+limits and health checks. None runs privileged. The agent and the dashboard run from one
+distroless image (no shell, no package manager), as two containers; only the agent's has the
+Docker socket.
 
 **Secrets** live in the GitHub environment and in each server's `/opt/spotcraft/.env` (mode
 600, owned by `deploy`). The deploy sends them over SSH's stdin, never on a command line. None
