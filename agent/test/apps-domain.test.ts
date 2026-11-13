@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -93,6 +93,20 @@ describe('apps domain (ADR 0021)', () => {
     assert.equal(reloads.length, 1)
     assert.deepEqual(await behindTunnel.refreshSites(), [], 'nothing left to change')
     assert.equal(reloads.length, 1, 'no reload without a change')
+  })
+
+  it('makes compose files written before the 600 rule private when it starts', async () => {
+    start({ appsDomain: 'spotcraft.dev', edge: 'direct' })
+    await put('blog', spec)
+    const compose = join(dir, 'apps/blog/compose.yaml')
+    await chmod(compose, 0o644)
+    const apps = new Apps(
+      new Store(dir),
+      async () => ({ code: 0, stdout: '', stderr: '' }),
+      'caddy',
+    )
+    await apps.refreshSites()
+    assert.equal((await stat(compose)).mode & 0o777, 0o600)
   })
 
   it('puts the previous sites back when Caddy rejects the rewrite, and tries again later', async () => {

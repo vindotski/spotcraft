@@ -8,7 +8,7 @@ VictoriaMetrics. It has no database: the agent's files are the app list.
 
 | Path                | What                                                                                                            |
 | ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `/login`            | password login (5 failures per address in 15 minutes locks it out)                                              |
+| `/login`            | password login (5 failures per client in 15 minutes lock it out; IPv6 counts per /64)                           |
 | `/`                 | apps: status, address, image:tag, 24-hour uptime                                                                |
 | `/apps/new`         | add an app: name, image, tag (Docker Hub suggestions), custom domain, port, limits, env, database, sign-in      |
 | `/apps/:name`       | status, reachability, uptime, CPU, memory, response time, settings, domain status, logs; Edit, Redeploy, Remove |
@@ -62,6 +62,8 @@ docker build .                                     # the spotcraft image, from t
 
 ## Security
 
+- App routes are `/apps/[name=name]`: the name must match the agent's rule (`src/params.ts`),
+  and agent calls encode it.
 - Every route but `/login` needs a session or a Cloudflare Access sign-in; `/api/*` answers 401
   instead of redirecting.
 - **Access sign-in** (both `CF_ACCESS_*` set, [ADR 0023](../../docs/decisions/0023-access-sign-in.md)):

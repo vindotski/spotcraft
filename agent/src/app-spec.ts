@@ -63,6 +63,12 @@ export const RESERVED_NAMES = new Set([
   'fallback',
 ])
 
+/**
+ * Whether an app may not take this name: one of RESERVED_NAMES, or `app-…`, the alias Caddy uses
+ * to reach each app on the edge network (an app called `app-blog` would answer for `blog`).
+ */
+export const isReservedName = (name: string) => RESERVED_NAMES.has(name) || name.startsWith('app-')
+
 /** The host every app gets on the apps domain, e.g. `tagtape.spotcraft.dev`. */
 export const defaultHost = (name: string, appsDomain: string) => `${name}.${appsDomain}`
 

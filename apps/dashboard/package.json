@@ -25,7 +25,7 @@
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
-    "jose": "^6.2.15",
+    "jose": "^6.2.17",
     "svelte": "catalog:",
     "svelte-check": "catalog:",
     "tailwindcss": "catalog:",
