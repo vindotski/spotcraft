@@ -10,6 +10,11 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard shows the running Spotcraft version in its footer once you're signed in,
+  linked to the release notes.
+
 ### Changed
 
 - **Taking over a custom domain's DNS records is now an app setting**
