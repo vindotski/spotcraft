@@ -11,6 +11,8 @@ to run against an older schema.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-13
+
 ### Security
 
 - `provision` and `migrate` pin `search_path` to `pg_catalog, auth` on their connections, so a
@@ -30,6 +32,7 @@ client address and a check of the `auth` schema version; `currentGuest` reads wi
 The `./schema` export (the `auth` tables and migrations) and `./provision` (an app's database
 and role). `auth` schema version 1; needs Spotcraft 0.2.0 or later.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/kit-v0.3.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/kit-v0.3.1...HEAD
+[0.3.1]: https://github.com/vindotski/spotcraft/compare/kit-v0.3.0...kit-v0.3.1
 [0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.2.0

@@ -10,6 +10,18 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-13
+
+Spotcraft runs on one server, from one image, and its website moved to GitHub Pages. Signing in
+through Cloudflare Access now opens the dashboard without its password, and the kit has its own
+version (0.3.1, released first). An audit before the release closed several security gaps.
+
+**Upgrading from 0.3** takes the steps under "Spotcraft runs on one server" below: new deploy
+variables (`SERVER_HOST`, `CLOUDFLARE_TUNNEL_TOKEN`), one Deploy run that switches to the new
+`spotcraft` image and the `infra/server` stack, then the OpenTofu changes and clean-up. Other
+breaking changes: the agent API takes `takeOver` in the body, and app names starting with `app-`
+are refused. Optionally, set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` for the Access sign-in.
+
 ### Added
 
 - **The website moved to GitHub Pages** ([ADR 0024](docs/decisions/0024-website-on-pages.md)).
@@ -223,7 +235,8 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/vindotski/spotcraft/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vindotski/spotcraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.1.0
