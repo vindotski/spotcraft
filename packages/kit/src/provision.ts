@@ -23,11 +23,14 @@ const MIGRATION_LOCK = 4_250_816_001
 async function connect(url: string, database?: string): Promise<pg.Client> {
   const target = new URL(url)
   if (database) target.pathname = `/${database}`
-  const client = new Client({ connectionString: target.toString() })
-  await client.connect()
   // Apps own their databases and could create schemas; a fixed search_path keeps them from
   // shadowing anything the migrations and grants resolve (every name here is qualified anyway).
-  await client.query('SET search_path = pg_catalog, auth')
+  // Set as a startup option, so there is no extra query that could fail after connecting.
+  const client = new Client({
+    connectionString: target.toString(),
+    options: '-c search_path=pg_catalog,auth',
+  })
+  await client.connect()
   return client
 }
 
