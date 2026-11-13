@@ -25,7 +25,7 @@
     "check:versions": "node scripts/check-versions.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.7",
     "@sveltejs/mcp": "^0.1.30",
     "@types/node": "catalog:",
     "typescript": "catalog:"
