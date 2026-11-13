@@ -41,6 +41,9 @@ jobs:
       CLOUDFLARE_APPS_ZONE_ID: ${{ vars.CLOUDFLARE_APPS_ZONE_ID }}
       CLOUDFLARE_TUNNEL_ID: ${{ vars.CLOUDFLARE_TUNNEL_ID }}
       CLOUDFLARE_ACCESS_POLICY_ID: ${{ vars.CLOUDFLARE_ACCESS_POLICY_ID }}
+      # Optional, both together: a Cloudflare Access sign-in skips the dashboard password.
+      CF_ACCESS_TEAM_DOMAIN: ${{ vars.CF_ACCESS_TEAM_DOMAIN }}
+      CF_ACCESS_AUD: ${{ vars.CF_ACCESS_AUD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -115,6 +118,7 @@ jobs:
               "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$DASHBOARD_DOMAIN"
             printf 'export AGENT_TOKEN=%q DASHBOARD_PASSWORD_HASH=%q SESSION_SECRET=%q\n' \
               "$AGENT_TOKEN" "$DASHBOARD_PASSWORD_HASH" "$SESSION_SECRET"
+            printf 'export CF_ACCESS_TEAM_DOMAIN=%q CF_ACCESS_AUD=%q\n' "$CF_ACCESS_TEAM_DOMAIN" "$CF_ACCESS_AUD"
             printf 'export EDGE=%q CLOUDFLARE_TUNNEL_TOKEN=%q\n' "$EDGE" "$CLOUDFLARE_TUNNEL_TOKEN"
             cat infra/remote-deploy.sh
           } | ssh ops bash -s

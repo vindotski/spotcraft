@@ -15,6 +15,8 @@
 #         CLOUDFLARE_TUNNEL_ID   optional; the agent sets up custom domains' DNS (ADR 0021)
 #   apps: CLOUDFLARE_ACCESS_POLICY_ID  optional; lets apps be put behind Cloudflare Access
 #   ops:  APPS_PRIVATE_IP, DASHBOARD_DOMAIN, DASHBOARD_PASSWORD_HASH, SESSION_SECRET
+#   ops:  CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD  optional, both or neither; an Access sign-in
+#         skips the dashboard password (ADR 0023)
 #   EDGE                      optional; cloudflare = behind a Cloudflare Tunnel (ADR 0021)
 #   CLOUDFLARE_TUNNEL_TOKEN   this server's tunnel token; required with EDGE=cloudflare
 set -euo pipefail
@@ -106,6 +108,12 @@ ENV
     ;;
   ops)
     require APPS_PRIVATE_IP DASHBOARD_DOMAIN DASHBOARD_PASSWORD_HASH SESSION_SECRET
+    optional CF_ACCESS_TEAM_DOMAIN CF_ACCESS_AUD
+    if { [ -n "$CF_ACCESS_TEAM_DOMAIN" ] && [ -z "$CF_ACCESS_AUD" ]; } ||
+      { [ -z "$CF_ACCESS_TEAM_DOMAIN" ] && [ -n "$CF_ACCESS_AUD" ]; }; then
+      echo "::error::Set both CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD, or neither" >&2
+      exit 1
+    fi
     cat > .env.new <<ENV
 DASHBOARD_DOMAIN=$DASHBOARD_DOMAIN
 APPS_PRIVATE_IP=$APPS_PRIVATE_IP
@@ -114,6 +122,8 @@ SPOTCRAFT_DASHBOARD_IMAGE=$IMAGE_NAMESPACE/spotcraft-dashboard
 AGENT_TOKEN=$AGENT_TOKEN
 DASHBOARD_PASSWORD_HASH=$DASHBOARD_PASSWORD_HASH
 SESSION_SECRET=$SESSION_SECRET
+CF_ACCESS_TEAM_DOMAIN=$CF_ACCESS_TEAM_DOMAIN
+CF_ACCESS_AUD=$CF_ACCESS_AUD
 ENV
     if [ "$EDGE" = cloudflare ]; then echo "DASHBOARD_SCHEME=http://" >> .env.new; fi
     ;;

@@ -91,19 +91,23 @@ than `10.0.0.2` and `10.0.0.3`.
 
 Optional settings, all in the same environment:
 
-| Kind     | Name                           | Value                                                      |
-| -------- | ------------------------------ | ---------------------------------------------------------- |
-| variable | `APPS_DOMAIN`                  | the apps domain, e.g. `example.com`                        |
-| variable | `EDGE`                         | `cloudflare` to run behind the tunnels (default `direct`)  |
-| secret   | `CLOUDFLARE_TUNNEL_TOKEN_APPS` | `tofu output -raw apps_tunnel_token` in `infra/cloudflare` |
-| secret   | `CLOUDFLARE_TUNNEL_TOKEN_OPS`  | `tofu output -raw ops_tunnel_token`                        |
-| secret   | `CLOUDFLARE_API_TOKEN`         | the agent's own token (`infra/cloudflare` README)          |
-| variable | `CLOUDFLARE_ACCOUNT_ID`        | from the `agent_settings` output                           |
-| variable | `CLOUDFLARE_APPS_ZONE_ID`      | from the `agent_settings` output                           |
-| variable | `CLOUDFLARE_TUNNEL_ID`         | from the `agent_settings` output                           |
-| variable | `CLOUDFLARE_ACCESS_POLICY_ID`  | from the `agent_settings` output, if you use Access        |
+| Kind     | Name                           | Value                                                         |
+| -------- | ------------------------------ | ------------------------------------------------------------- |
+| variable | `APPS_DOMAIN`                  | the apps domain, e.g. `example.com`                           |
+| variable | `EDGE`                         | `cloudflare` to run behind the tunnels (default `direct`)     |
+| secret   | `CLOUDFLARE_TUNNEL_TOKEN_APPS` | `tofu output -raw apps_tunnel_token` in `infra/cloudflare`    |
+| secret   | `CLOUDFLARE_TUNNEL_TOKEN_OPS`  | `tofu output -raw ops_tunnel_token`                           |
+| secret   | `CLOUDFLARE_API_TOKEN`         | the agent's own token (`infra/cloudflare` README)             |
+| variable | `CLOUDFLARE_ACCOUNT_ID`        | from the `agent_settings` output                              |
+| variable | `CLOUDFLARE_APPS_ZONE_ID`      | from the `agent_settings` output                              |
+| variable | `CLOUDFLARE_TUNNEL_ID`         | from the `agent_settings` output                              |
+| variable | `CLOUDFLARE_ACCESS_POLICY_ID`  | from the `agent_settings` output, if you use Access           |
+| variable | `CF_ACCESS_TEAM_DOMAIN`        | `<team>.cloudflareaccess.com`, if Access guards the dashboard |
+| variable | `CF_ACCESS_AUD`                | from the `dashboard_settings` output, with the one above      |
 
 With the four `CLOUDFLARE_*` agent settings, Spotcraft sets up each app's custom domain itself.
+With both `CF_ACCESS_*` variables, signing in at Cloudflare Access is enough to open the
+dashboard; the password stays as the way in without Access.
 With the Access policy as well, any app can be put behind a sign-in.
 
 ## 6. Deploy Spotcraft

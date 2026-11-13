@@ -23,7 +23,9 @@ module doesn't change them.
 
 - Every zone (`apps_domain`, the dashboard's zone, `extra_zones`) is active in the account.
 - **Access** (`access_emails`): Zero Trust is set up once in the Cloudflare dashboard (a team
-  name and the free plan). One-time PIN login is on by default.
+  name and the free plan). One-time PIN login is on by default. The `dashboard_settings`
+  output's `CF_ACCESS_AUD`, plus `CF_ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`), let
+  that sign-in skip the dashboard's password (ADR 0023).
 - **Custom hostnames** (`custom_hostnames = true`): on the apps zone, open **SSL/TLS → Custom
   Hostnames** and enable Cloudflare for SaaS. The first 100 hostnames are free.
 - If the wildcard or the dashboard's host already has a record (e.g. an A record pointing at the

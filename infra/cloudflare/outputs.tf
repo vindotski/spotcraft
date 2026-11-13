@@ -20,13 +20,22 @@ output "agent_settings" {
   }
 }
 
+output "dashboard_settings" {
+  description = "Values the dashboard needs so a Cloudflare Access sign-in skips its password (ADR 0023); empty without Access."
+  value = {
+    CF_ACCESS_AUD = local.access ? cloudflare_zero_trust_access_application.dashboard[0].aud : ""
+  }
+}
+
 output "next_steps" {
   description = "What to do after an apply."
   value       = <<-EOT
     1. tofu output -raw apps_tunnel_token  → secret CLOUDFLARE_TUNNEL_TOKEN_APPS
        tofu output -raw ops_tunnel_token   → secret CLOUDFLARE_TUNNEL_TOKEN_OPS
-    2. Copy agent_settings into variables of the same names on the production environment,
-       and the agent's own token (README) into the secret CLOUDFLARE_API_TOKEN.
+    2. Copy agent_settings and dashboard_settings into variables of the same names on the
+       production environment, plus CF_ACCESS_TEAM_DOMAIN (<team>.cloudflareaccess.com, from
+       Zero Trust settings), and the agent's own token (README) into the secret
+       CLOUDFLARE_API_TOKEN.
     3. Deploy with EDGE=cloudflare, then close ports 80 and 443 (infra/hetzner: edge = "cloudflare").
   EOT
 }
