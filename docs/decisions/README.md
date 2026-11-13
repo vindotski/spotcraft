@@ -32,3 +32,4 @@ that supersedes the old one; old records are never rewritten.
 | 0026 | [Spotcraft runs on one server](0026-one-server.md)                                         | accepted                                     |
 | 0027 | [The kit has its own version](0027-kit-version.md)                                         | accepted                                     |
 | 0028 | [Deploys start the new version next to the old one](0028-zero-downtime-deploys.md)         | accepted                                     |
+| 0029 | [An app's CI deploys a new tag through a deploy hook](0029-deploy-hook.md)                 | accepted                                     |

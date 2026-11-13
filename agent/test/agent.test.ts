@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 import { buildApp } from '../src/app.ts'
 import { Apps, type Databases } from '../src/apps.ts'
+import type { Domains } from '../src/domains.ts'
 import type { Runner, RunResult } from '../src/runner.ts'
 import { Store } from '../src/store.ts'
 
@@ -19,8 +20,11 @@ function fakeDocker() {
   const calls: string[][] = []
   const running = new Set<string>(['spotcraft-apps/caddy'])
   let fail: ((args: string[]) => boolean) | undefined
+  let gate: Promise<void> | undefined
   const run: Runner = async (_file, args): Promise<RunResult> => {
     calls.push(args)
+    // `hold()` keeps pulls waiting, as a slow deploy would, until it is let go.
+    if (gate && args.includes('pull')) await gate
     if (fail?.(args)) return { code: 1, stdout: '', stderr: 'boom' }
     const project = args[0] === 'compose' ? args[args.indexOf('-p') + 1] : undefined
     // `docker compose -p <project> … up … <service>` starts that service's container; `down`
@@ -57,6 +61,16 @@ function fakeDocker() {
     running,
     failWhen: (match: (args: string[]) => boolean) => {
       fail = match
+    },
+    hold: () => {
+      let release = () => {}
+      gate = new Promise((resolve) => {
+        release = () => {
+          gate = undefined
+          resolve()
+        }
+      })
+      return release
     },
   }
 }
@@ -165,6 +179,223 @@ describe('agent', () => {
     const up = docker.calls.find((args) => args.includes('up'))
     assert.equal(up?.at(-1), 'tagtape-blue', 'only the new slot is started')
     assert.ok(!up?.includes('--remove-orphans'))
+  })
+
+  describe('deploy hook (ADR 0029)', () => {
+    const deployed = () =>
+      app.inject({ method: 'PUT', url: '/apps/tagtape', headers: auth, payload: spec })
+    const newToken = async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      assert.equal(res.statusCode, 201, res.body)
+      return res.json().token as string
+    }
+    const release = (token: string, tag: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers: { ...auth, 'x-hook-token': token },
+        payload: { tag },
+      })
+    const state = (token: string) =>
+      app.inject({ url: '/apps/tagtape/release', headers: { ...auth, 'x-hook-token': token } })
+    /** Waits for the release deploying in the background. */
+    const settled = async (token: string) => {
+      for (let i = 0; i < 100; i++) {
+        const body = (await state(token)).json()
+        if (body.state !== 'deploying') return body
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      throw new Error('the release never settled')
+    }
+
+    it('makes a token, keeps only its hash, and turns the hook off again', async () => {
+      await deployed()
+      const status = () => app.inject({ url: '/apps/tagtape/hook-token', headers: auth })
+      assert.deepEqual((await status()).json(), { enabled: false })
+      const token = await newToken()
+      assert.ok(token.length >= 43)
+      assert.deepEqual((await status()).json(), { enabled: true })
+      const secrets = await readFile(join(dir, 'apps/tagtape/secrets.json'), 'utf8')
+      assert.ok(!secrets.includes(token), 'the token itself is not stored')
+      // It is never part of the app as the API returns it.
+      assert.ok(!(await app.inject({ url: '/apps/tagtape', headers: auth })).body.includes('hook'))
+
+      const off = await app.inject({
+        method: 'DELETE',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      assert.equal(off.statusCode, 204)
+      assert.deepEqual((await status()).json(), { enabled: false })
+      assert.equal((await release(token, '2.1.0')).statusCode, 401)
+    })
+
+    it('deploys only the new tag, answering at once, and reports how it went', async () => {
+      await deployed()
+      const token = await newToken()
+      const res = await release(token, '2.1.0')
+      assert.equal(res.statusCode, 202, res.body)
+      assert.equal(res.json().state, 'deploying')
+      assert.equal(res.json().tag, '2.1.0')
+      assert.equal((await settled(token)).state, 'live')
+
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.1.0')
+      assert.equal(stored.image, spec.image, 'the image stays')
+      assert.deepEqual(stored.env, spec.env, 'the env stays')
+    })
+
+    it('reports a failed release without its command output', async () => {
+      await deployed()
+      const token = await newToken()
+      docker.failWhen((args) => args.includes('pull'))
+      assert.equal((await release(token, '9.9.9')).statusCode, 202)
+      const result = await settled(token)
+      assert.equal(result.state, 'failed')
+      assert.match(result.error, /Could not pull vindotski\/tagtape:9\.9\.9/)
+      assert.ok(!('output' in result))
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.0.0')
+    })
+
+    it('refuses wrong, missing and rotated tokens alike, and bad tags', async () => {
+      await deployed()
+      // No token yet.
+      assert.equal((await release('anything', '2.1.0')).statusCode, 401)
+      const first = await newToken()
+      const second = await newToken()
+      assert.equal((await release(first, '2.1.0')).statusCode, 401, 'rotated out')
+      assert.equal((await release(`${second}x`, '2.1.0')).statusCode, 401)
+      assert.equal((await state(first)).statusCode, 401)
+      // An app that doesn't exist answers the same as a wrong token.
+      const missing = await app.inject({
+        method: 'POST',
+        url: '/apps/nope/release',
+        headers: { ...auth, 'x-hook-token': second },
+        payload: { tag: '1.0.0' },
+      })
+      assert.equal(missing.statusCode, 401)
+      const noHeader = await app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers: auth,
+        payload: { tag: '2.1.0' },
+      })
+      assert.equal(noHeader.statusCode, 400)
+      assert.equal((await release(second, '-bad')).statusCode, 400)
+      assert.equal((await release(second, '2.1.0')).statusCode, 202)
+      await settled(second)
+    })
+
+    it('still needs the dashboard token', async () => {
+      await deployed()
+      const token = await newToken()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers: { 'x-hook-token': token },
+        payload: { tag: '2.1.0' },
+      })
+      assert.equal(res.statusCode, 401)
+    })
+
+    const pulls = () => docker.calls.filter((args) => args.includes('pull')).map((a) => a)
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setTimeout(r, 2))
+      assert.ok(check(), 'timed out')
+    }
+
+    it('keeps at most one release waiting per app: a newer one replaces its tag', async () => {
+      await deployed()
+      const token = await newToken()
+      const before = pulls().length
+      const letGo = docker.hold()
+      assert.equal((await release(token, '2.1.0')).statusCode, 202)
+      await until(() => pulls().length === before + 1) // 2.1.0 is deploying
+      assert.equal((await release(token, '2.2.0')).statusCode, 202) // waits
+      assert.equal((await release(token, '2.3.0')).statusCode, 202) // replaces 2.2.0
+      letGo()
+      await until(() => pulls().length === before + 2)
+      const result = await settled(token)
+      assert.deepEqual([result.state, result.tag], ['live', '2.3.0'])
+      assert.equal(pulls().length, before + 2, '2.2.0 never deployed')
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.3.0')
+    })
+
+    it('drops a waiting release when the hook is turned off', async () => {
+      await deployed()
+      const token = await newToken()
+      const before = pulls().length
+      const letGo = docker.hold()
+      await release(token, '2.1.0')
+      await until(() => pulls().length === before + 1)
+      await release(token, '2.2.0') // waits behind 2.1.0
+      const off = app.inject({ method: 'DELETE', url: '/apps/tagtape/hook-token', headers: auth })
+      letGo()
+      assert.equal((await off).statusCode, 204)
+      // 2.1.0 had started and finishes; 2.2.0 never runs.
+      await new Promise((r) => setTimeout(r, 20))
+      assert.equal(pulls().length, before + 1)
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.1.0')
+    })
+
+    it("never takes over DNS records, and keeps the app's own take-over setting", async () => {
+      const attached: boolean[] = []
+      const domains = {
+        attach: async (_name: string, _hosts: string[], { takeOver = false } = {}) => {
+          attached.push(takeOver)
+          return async () => {}
+        },
+        detach: async () => {},
+        status: async () => [],
+      } as unknown as Domains
+      const withDns = buildApp({
+        token: TOKEN,
+        apps: new Apps(new Store(dir), docker.run, 'caddy-test', undefined, undefined, { domains }),
+      })
+      const put = await withDns.inject({
+        method: 'PUT',
+        url: '/apps/tagtape',
+        headers: auth,
+        payload: { ...spec, takeOver: true },
+      })
+      assert.equal(put.statusCode, 200, put.body)
+      const made = await withDns.inject({
+        method: 'POST',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      const token = made.json().token
+      const headers = { ...auth, 'x-hook-token': token }
+      await withDns.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers,
+        payload: { tag: '2.1.0' },
+      })
+      for (let i = 0; i < 100; i++) {
+        const body = (await withDns.inject({ url: '/apps/tagtape/release', headers })).json()
+        if (body.state !== 'deploying') break
+        await new Promise((r) => setTimeout(r, 5))
+      }
+      assert.deepEqual(attached, [true, false], 'the dashboard deploy may, the hook may not')
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.takeOver, true, 'the setting itself stays')
+      assert.equal(stored.tag, '2.1.0')
+      await withDns.close()
+    })
+
+    it('says the live tag when there was no release since the agent started', async () => {
+      await deployed()
+      const token = await newToken()
+      assert.deepEqual((await state(token)).json(), { state: 'live', tag: '2.0.0' })
+    })
   })
 
   describe('slots (ADR 0028)', () => {

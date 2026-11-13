@@ -1,8 +1,8 @@
 import type { AgentSettings, AppBody, AppSpec, DomainStatus } from '@spotcraft/agent/app-spec'
-import type { AppStatus, UserPage } from '@spotcraft/agent/apps'
+import type { AppStatus, ReleaseState, UserPage } from '@spotcraft/agent/apps'
 import { AGENT_TOKEN, AGENT_URL } from '$app/env/private'
 
-export type { AgentSettings, AppSpec, AppStatus, DomainStatus, UserPage }
+export type { AgentSettings, AppSpec, AppStatus, DomainStatus, ReleaseState, UserPage }
 export type AppInput = AppBody
 
 export class AgentUnavailable extends Error {}
@@ -107,4 +107,48 @@ export async function appLogs(name: string, tail = 200): Promise<string> {
   const response = await call(`${appPath(name)}/logs?tail=${tail}`)
   if (!response.ok) return ''
   return response.text()
+}
+
+/** Whether the app has a deploy hook token (ADR 0029); undefined if there is no such app. */
+export async function hookEnabled(name: string): Promise<boolean | undefined> {
+  const response = await call(`${appPath(name)}/hook-token`)
+  if (response.status === 404) return undefined
+  return (await expectJson<{ enabled: boolean }>(response)).enabled
+}
+
+/** A new deploy hook token for the app, replacing any old one. Shown once; only its hash is kept. */
+export async function createHookToken(name: string): Promise<string> {
+  const response = await call(`${appPath(name)}/hook-token`, { method: 'POST' })
+  return (await expectJson<{ token: string }>(response)).token
+}
+
+/** Turns the app's deploy hook off. */
+export async function deleteHookToken(name: string): Promise<void> {
+  const response = await call(`${appPath(name)}/hook-token`, { method: 'DELETE' })
+  if (!response.ok) await expectJson(response)
+}
+
+/**
+ * Relays a call to the deploy hook from the app's CI: a new release (`tag`) or, without one,
+ * how the last release went. The agent checks the hook token; its answer is passed through.
+ */
+export async function relayRelease(
+  name: string,
+  hookToken: string,
+  tag?: string,
+): Promise<{ status: number; body: ReleaseState | { error: string } }> {
+  const response = await call(
+    `${appPath(name)}/release`,
+    tag === undefined
+      ? { headers: { 'x-hook-token': hookToken } }
+      : {
+          method: 'POST',
+          headers: { 'x-hook-token': hookToken, 'content-type': 'application/json' },
+          body: JSON.stringify({ tag }),
+        },
+  )
+  const body = (await response.json().catch(() => ({ error: 'Agent answered without JSON' }))) as
+    | ReleaseState
+    | { error: string }
+  return { status: response.status, body }
 }

@@ -15,19 +15,24 @@ The files it writes are the only record of which apps exist:
 
 ## API
 
-| Method | Path                    | What                                                       |
-| ------ | ----------------------- | ---------------------------------------------------------- |
-| GET    | `/health`               | `{ ok: true }`, no token needed                            |
-| GET    | `/settings`             | `{ appsDomain?, edge, dns, access }`: what is set up       |
-| GET    | `/apps`                 | settings plus `state`, `health`, `status`, `hostnames`     |
-| GET    | `/apps/:name`           | one app, or 404                                            |
-| PUT    | `/apps/:name`           | create or update, then deploy; returns the app with status |
-| DELETE | `/apps/:name`           | stop and remove the app and its site; 204, or 404          |
-|        |                         | `?purge=true` also deletes its database and role           |
-| GET    | `/apps/:name/domain`    | custom domain status and records still to create           |
-| GET    | `/apps/:name/logs`      | last `?tail=` lines (default 200, max 5000), plain text    |
-| GET    | `/apps/:name/users`     | the app's users, newest first (`?limit=`, `?cursor=`)      |
-| DELETE | `/apps/:name/users/:id` | delete a user and what the app kept for them; 204, or 404  |
+| Method | Path                     | What                                                       |
+| ------ | ------------------------ | ---------------------------------------------------------- |
+| GET    | `/health`                | `{ ok: true }`, no token needed                            |
+| GET    | `/settings`              | `{ appsDomain?, edge, dns, access }`: what is set up       |
+| GET    | `/apps`                  | settings plus `state`, `health`, `status`, `hostnames`     |
+| GET    | `/apps/:name`            | one app, or 404                                            |
+| PUT    | `/apps/:name`            | create or update, then deploy; returns the app with status |
+| DELETE | `/apps/:name`            | stop and remove the app and its site; 204, or 404          |
+|        |                          | `?purge=true` also deletes its database and role           |
+| GET    | `/apps/:name/domain`     | custom domain status and records still to create           |
+| GET    | `/apps/:name/logs`       | last `?tail=` lines (default 200, max 5000), plain text    |
+| GET    | `/apps/:name/users`      | the app's users, newest first (`?limit=`, `?cursor=`)      |
+| DELETE | `/apps/:name/users/:id`  | delete a user and what the app kept for them; 204, or 404  |
+| GET    | `/apps/:name/hook-token` | `{ enabled }`: whether the app has a deploy hook           |
+| POST   | `/apps/:name/hook-token` | a new deploy hook token, returned once (201)               |
+| DELETE | `/apps/:name/hook-token` | turn the deploy hook off; 204                              |
+| POST   | `/apps/:name/release`    | `{ tag }` with `X-Hook-Token`: deploy that tag; 202        |
+| GET    | `/apps/:name/release`    | with `X-Hook-Token`: how the last release went             |
 
 `PUT` body (unknown fields are rejected):
 
@@ -163,6 +168,28 @@ Every app container gets: no Linux capabilities, `no-new-privileges`, memory/CPU
 limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy reaches it as
 `app-<name>-<slot>`. Its `app.json` (which holds the env), compose file (which also holds
 `DATABASE_URL`) and `secrets.json` are readable by the agent's user only.
+
+## Deploy hook
+
+An app's CI can deploy a new tag through the dashboard's `/hooks/deploy/<name>`, which relays
+to `/apps/:name/release` ([ADR 0029](../docs/decisions/0029-deploy-hook.md), guide:
+[Deploy from CI](../docs/guides/deploy-from-ci.md)).
+
+- **The token.** `POST /apps/:name/hook-token` makes a token (32 random bytes, base64url) and
+  keeps only its SHA-256 in the app's `secrets.json`; a new one replaces the old. It is never
+  part of the app as the API returns it.
+- **The routes check it.** The release routes take it in `X-Hook-Token`, next to the dashboard's
+  own token, and compare digests in constant time. A wrong token, a rotated one, an app without
+  a hook and an app that doesn't exist all get 401.
+- **A release changes only the tag,** and never takes over DNS records. It reads the stored
+  spec inside the deploy queue, so an edit queued before it is kept, and answers 202 at once.
+- **One release per app waits.** A newer one replaces the waiting one's tag. When it runs, the
+  token it came with must still be the app's, so a new token or turning the hook off also stops
+  a release that is still waiting.
+- **Its state** (`deploying`, `live`, `failed` with the agent's message, no command output) is
+  kept in memory, the latest release per app, and forgotten when the token changes or the app is
+  removed. Without one since the agent started, `GET`
+  answers `live` with the app's tag.
 
 ## App databases
 

@@ -2,9 +2,12 @@ import { NAME } from '@spotcraft/agent/app-spec'
 import { error, fail, redirect } from '@sveltejs/kit'
 import {
   appLogs,
+  createHookToken,
+  deleteHookToken,
   deployApp,
   getApp,
   getDomainStatus,
+  hookEnabled,
   listApps,
   removeApp,
 } from '#lib/server/agent.ts'
@@ -12,12 +15,12 @@ import { instant, promql, range } from '#lib/server/metrics.ts'
 import { writeProbes } from '#lib/server/probes.ts'
 import type { Actions, PageServerLoad } from './$types'
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, url }) => {
   const { name } = params
   // The name goes into PromQL and agent URLs before the app is looked up: only valid names.
   if (!new RegExp(NAME).test(name)) error(404, 'No such app')
   // Everything starts at once; only the 404 waits for the app itself.
-  const [app, cpu, memory, response, up, uptimeDay, uptimeWeek, logs] = await Promise.all([
+  const [app, cpu, memory, response, up, uptimeDay, uptimeWeek, logs, hook] = await Promise.all([
     getApp(name),
     range(promql.appCpu(name)),
     range(promql.appMemory(name)),
@@ -26,11 +29,19 @@ export const load: PageServerLoad = async ({ params }) => {
     instant(promql.appUptime(name, '24h')),
     instant(promql.appUptime(name, '7d')),
     appLogs(name, 200),
+    hookEnabled(name).catch(() => undefined),
   ])
   if (!app) error(404, 'No such app')
   // The domain's status asks Cloudflare (several calls): streamed, so the page doesn't wait.
   const domain = app.domain ? getDomainStatus(name).catch(() => undefined) : undefined
-  return { app, metrics: { cpu, memory, response, up, uptimeDay, uptimeWeek }, logs, domain }
+  return {
+    app,
+    metrics: { cpu, memory, response, up, uptimeDay, uptimeWeek },
+    logs,
+    domain,
+    // Always https: behind the tunnel the dashboard itself sees plain HTTP.
+    hook: { enabled: hook, url: `https://${url.host}/hooks/deploy/${name}` },
+  }
 }
 
 export const actions: Actions = {
@@ -42,6 +53,14 @@ export const actions: Actions = {
     const result = await deployApp(name, input)
     if (!result.ok) return fail(502, { deployError: result.error, output: result.output })
     return { redeployed: true }
+  },
+  // The deploy hook (ADR 0029): a new token, shown once, replaces any old one.
+  createHook: async ({ params }) => {
+    return { hookToken: await createHookToken(params.name) }
+  },
+  deleteHook: async ({ params }) => {
+    await deleteHookToken(params.name)
+    return { hookDeleted: true }
   },
   remove: async ({ params, request }) => {
     const purge = (await request.formData()).get('purge') === 'on'

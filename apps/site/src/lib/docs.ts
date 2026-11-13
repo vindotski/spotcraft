@@ -22,6 +22,7 @@ const pageFiles = new Map<string, string>([
   ['getting-started', 'docs/getting-started.md'],
   ['security', 'docs/security.md'],
   ['guides/backend-kit', 'docs/guides/backend-kit.md'],
+  ['guides/deploy-from-ci', 'docs/guides/deploy-from-ci.md'],
   ['changelog', 'CHANGELOG.md'],
   ['kit-changelog', 'packages/kit/CHANGELOG.md'],
   ['decisions', 'docs/decisions/README.md'],
@@ -46,6 +47,7 @@ export interface DocPage {
 export const NAV = [
   { slug: 'getting-started', label: 'Getting started' },
   { slug: 'guides/backend-kit', label: 'Guest accounts (kit)' },
+  { slug: 'guides/deploy-from-ci', label: 'Deploy from CI' },
   { slug: 'security', label: 'Security model' },
   { slug: 'decisions', label: 'Decisions' },
   { slug: 'changelog', label: 'Changelog' },

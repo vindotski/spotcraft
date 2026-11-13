@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { AccessApps } from './access.ts'
 import {
   type AgentSettings,
@@ -104,6 +104,18 @@ export interface UserPage {
   next?: string
 }
 
+/** Where an app's last release through its deploy hook stands (ADR 0029). */
+export interface ReleaseState {
+  state: 'deploying' | 'live' | 'failed'
+  tag: string
+  /** When it was asked for (ISO); absent when the agent has no record since it started. */
+  at?: string
+  /** Why it failed: the agent's message, without command output. */
+  error?: string
+}
+
+const sha256 = (value: string) => createHash('sha256').update(value).digest()
+
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 const tail = (result: RunResult) => `${result.stdout}\n${result.stderr}`.trim().slice(-4000)
@@ -118,6 +130,11 @@ export class Apps {
   readonly #domains: Domains | undefined
   readonly #access: AccessApps | undefined
   #queue: Promise<unknown> = Promise.resolve()
+  /** The last release through each app's deploy hook, with a number to tell releases apart. */
+  readonly #releases = new Map<string, ReleaseState & { id: number }>()
+  /** Per app, the hook release waiting in the queue, if any, and the token it came with. */
+  readonly #waitingReleases = new Map<string, { tag: string; id: number; tokenHash: string }>()
+  #releaseCount = 0
 
   /** Without `databases`, apps can't ask for a database (the server has no Postgres). */
   constructor(
@@ -260,51 +277,172 @@ export class Apps {
    * With `spec.takeOver`, a custom domain's existing DNS records are replaced (ADR 0022).
    */
   deploy(spec: AppSpec): Promise<AppStatus> {
-    return this.#exclusive(async () => {
-      const previousSpec = await this.#store.get(spec.name)
-      const oldHosts = previousSpec ? customHosts(previousSpec) : []
-      const newHosts = customHosts(spec)
-      // DNS first, then the database: if either can't be prepared, the app hasn't changed yet.
-      const domains = this.#domains
-      const undoDns = domains
-        ? await this.#cloudflare(`set up DNS for ${spec.domain}`, () =>
-            domains.attach(spec.name, newHosts, { takeOver: Boolean(spec.takeOver) }),
-          )
-        : undefined
-      const access = this.#access
-      let status: AppStatus
-      try {
-        // Protection goes on before the new version takes traffic.
-        if (access) {
-          await this.#cloudflare('set up Cloudflare Access', () =>
-            access.sync(
-              spec.name,
-              servedHosts(spec, this.settings.appsDomain),
-              Boolean(spec.protected),
-            ),
-          )
-        }
-        status = await this.#rollOut(spec)
-      } catch (error) {
-        // Put DNS back exactly as it was (records a take-over replaced included), and the
-        // previous protection (best effort).
-        await undoDns?.()
-        await access
-          ?.sync(
+    return this.#exclusive(() => this.#deploy(spec))
+  }
+
+  /**
+   * With `takeOver: false`, this deploy replaces no foreign DNS records whatever the app's
+   * setting, which stays as stored (a hook release, ADR 0029).
+   */
+  async #deploy(spec: AppSpec, { takeOver = Boolean(spec.takeOver) } = {}): Promise<AppStatus> {
+    const previousSpec = await this.#store.get(spec.name)
+    const oldHosts = previousSpec ? customHosts(previousSpec) : []
+    const newHosts = customHosts(spec)
+    // DNS first, then the database: if either can't be prepared, the app hasn't changed yet.
+    const domains = this.#domains
+    const undoDns = domains
+      ? await this.#cloudflare(`set up DNS for ${spec.domain}`, () =>
+          domains.attach(spec.name, newHosts, { takeOver }),
+        )
+      : undefined
+    const access = this.#access
+    let status: AppStatus
+    try {
+      // Protection goes on before the new version takes traffic.
+      if (access) {
+        await this.#cloudflare('set up Cloudflare Access', () =>
+          access.sync(
             spec.name,
-            previousSpec ? servedHosts(previousSpec, this.settings.appsDomain) : [],
-            Boolean(previousSpec?.protected),
-          )
-          .catch(() => {})
-        throw error
+            servedHosts(spec, this.settings.appsDomain),
+            Boolean(spec.protected),
+          ),
+        )
       }
-      // A domain the app no longer has: its records go, now that the new version runs.
-      const dropped = oldHosts.filter((host) => !newHosts.includes(host))
-      await this.#domains?.detach(spec.name, dropped).catch((error) => {
-        console.warn(`could not remove DNS records for ${dropped.join(', ')}: ${message(error)}`)
-      })
-      return status
+      status = await this.#rollOut(spec)
+    } catch (error) {
+      // Put DNS back exactly as it was (records a take-over replaced included), and the
+      // previous protection (best effort).
+      await undoDns?.()
+      await access
+        ?.sync(
+          spec.name,
+          previousSpec ? servedHosts(previousSpec, this.settings.appsDomain) : [],
+          Boolean(previousSpec?.protected),
+        )
+        .catch(() => {})
+      throw error
+    }
+    // A domain the app no longer has: its records go, now that the new version runs.
+    const dropped = oldHosts.filter((host) => !newHosts.includes(host))
+    await this.#domains?.detach(spec.name, dropped).catch((error) => {
+      console.warn(`could not remove DNS records for ${dropped.join(', ')}: ${message(error)}`)
     })
+    return status
+  }
+
+  /**
+   * Forgets the app's hook releases: the one waiting in the queue doesn't run, and its state
+   * isn't shown to whoever holds the next token. Done at once, not in the queue, so a release
+   * that is waiting can't run before the token change.
+   */
+  #forgetReleases(name: string) {
+    this.#waitingReleases.delete(name)
+    this.#releases.delete(name)
+  }
+
+  /** Makes a new deploy hook token for the app, replacing any old one; returns it, once. */
+  createHookToken(name: string): Promise<string> {
+    this.#forgetReleases(name)
+    return this.#exclusive(async () => {
+      if (!(await this.#store.get(name))) throw new AgentError('No such app', 404)
+      const token = randomBytes(32).toString('base64url')
+      const secrets = await this.#store.readSecrets(name)
+      await this.#store.writeSecrets(name, {
+        ...secrets,
+        hookTokenHash: sha256(token).toString('hex'),
+      })
+      return token
+    })
+  }
+
+  /** Turns the app's deploy hook off. */
+  deleteHookToken(name: string): Promise<void> {
+    this.#forgetReleases(name)
+    return this.#exclusive(async () => {
+      if (!(await this.#store.get(name))) throw new AgentError('No such app', 404)
+      const { hookTokenHash: _, ...secrets } = await this.#store.readSecrets(name)
+      await this.#store.writeSecrets(name, secrets)
+    })
+  }
+
+  /** Whether the app has a deploy hook token; undefined if there is no such app. */
+  async hasHookToken(name: string): Promise<boolean | undefined> {
+    if (!(await this.#store.get(name))) return undefined
+    return Boolean((await this.#store.readSecrets(name)).hookTokenHash)
+  }
+
+  /**
+   * Whether `token` is the app's deploy hook token. False for an app without one, or with no
+   * such app, so a caller can't tell which. Compared as digests, in constant time.
+   */
+  async #hookAllows(name: string, token: string): Promise<boolean> {
+    const { hookTokenHash } = await this.#store.readSecrets(name)
+    if (!hookTokenHash) return false
+    return timingSafeEqual(Buffer.from(hookTokenHash, 'hex'), sha256(token))
+  }
+
+  /**
+   * A release through the deploy hook: the app's stored spec with only `tag` changed, so the
+   * image, env and limits stay as the dashboard set them, and DNS records are never taken
+   * over. Answers at once; the deploy runs in the queue, and `releaseState` says how it went.
+   *
+   * At most one release per app waits in the queue: a newer one replaces its tag, so a CI loop
+   * or a leaked token can't pile up deploys in front of everything else. When it runs, the
+   * token it came with must still be the app's, so turning the hook off or making a new token
+   * also stops a release that is still waiting.
+   */
+  async release(name: string, token: string, tag: string): Promise<ReleaseState> {
+    if (!(await this.#hookAllows(name, token))) throw new AgentError('Unauthorized', 401)
+    const id = ++this.#releaseCount
+    const started: ReleaseState = { state: 'deploying', tag, at: new Date().toISOString() }
+    this.#releases.set(name, { ...started, id })
+    const tokenHash = sha256(token).toString('hex')
+    const waiting = this.#waitingReleases.get(name)
+    this.#waitingReleases.set(name, { tag, id, tokenHash })
+    if (waiting) return started // the queued task will deploy this tag instead
+    const settle = (releaseId: number, result: Partial<ReleaseState>) => {
+      // A newer release since: its state is the one to keep.
+      const current = this.#releases.get(name)
+      if (current?.id === releaseId) this.#releases.set(name, { ...current, ...result })
+    }
+    let next: { tag: string; id: number; tokenHash: string } | undefined
+    this.#exclusive(async () => {
+      next = this.#waitingReleases.get(name)
+      this.#waitingReleases.delete(name)
+      if (!next) return
+      const { hookTokenHash } = await this.#store.readSecrets(name)
+      if (hookTokenHash !== next.tokenHash) {
+        throw new AgentError('The deploy hook token changed before this release ran', 401)
+      }
+      const spec = await this.#store.get(name)
+      if (!spec) throw new AgentError(`${name} was removed`, 404)
+      return this.#deploy({ ...spec, tag: next.tag }, { takeOver: false })
+    }).then(
+      () => next && settle(next.id, { state: 'live' }),
+      (error: unknown) => {
+        if (!next) return
+        // No one is waiting on this request: the command output goes to the agent's log.
+        const output = error instanceof AgentError ? error.output : ''
+        console.warn(
+          `release of ${name}:${next.tag} through its deploy hook failed: ${message(error)}\n${output}`,
+        )
+        settle(next.id, { state: 'failed', error: message(error) })
+      },
+    )
+    return started
+  }
+
+  /** How the app's last hook release went; without one since the agent started, its live tag. */
+  async releaseState(name: string, token: string): Promise<ReleaseState> {
+    if (!(await this.#hookAllows(name, token))) throw new AgentError('Unauthorized', 401)
+    const release = this.#releases.get(name)
+    if (release) {
+      const { id: _, ...state } = release
+      return state
+    }
+    const spec = await this.#store.get(name)
+    if (!spec) throw new AgentError('Unauthorized', 401)
+    return { state: 'live', tag: spec.tag }
   }
 
   /**
@@ -457,52 +595,50 @@ export class Apps {
   }
 
   async #refreshSites(): Promise<string[]> {
-    {
-      const pending: { spec: AppSpec; files: AppFiles; site: string }[] = []
-      for (const spec of await this.#store.list()) {
-        // Compose files carry DATABASE_URL and app.json the env; older ones were written
-        // readable by everyone.
-        await this.#store.lockDown(spec.name)
-        const files = await this.#store.read(spec.name)
-        const service = files && composeService(files.compose)
-        if (!files || !service) continue
-        const site = renderSite(spec, this.settings, service)
-        if (files.site !== site) pending.push({ spec, files, site })
-      }
-      if (pending.length === 0) return []
-      // Protected apps' new hosts go behind Access before Caddy serves them, next to the old
-      // ones: whatever fails from here on (another app's Access update, Caddy's reload), every
-      // host that might be served stays protected. It narrows to the new hosts at the end.
-      const access = this.#access
-      const protectedSpecs = pending.filter((p) => p.spec.protected).map((p) => p.spec)
-      if (access) {
-        for (const spec of protectedSpecs) {
-          await this.#cloudflare(`protect ${spec.name} with Cloudflare Access`, () =>
-            access.extend(spec.name, servedHosts(spec, this.settings.appsDomain)),
-          )
-        }
-      }
-      for (const { spec, files, site } of pending)
-        await this.#store.write(spec.name, { ...files, site })
-      const reload = await this.#reloadCaddy()
-      if (reload.code !== 0) {
-        // Put the previous sites back, so Caddy keeps a configuration it accepts; the next
-        // attempt rewrites them again.
-        for (const { spec, files } of pending) await this.#store.write(spec.name, files)
-        await this.#reloadCaddy()
-        throw new AgentError('Caddy rejected the rewritten sites', 500, tail(reload))
-      }
-      // The old hosts are gone from Caddy now; protection can drop them (extra hosts would be
-      // harmless, so a failure here only leaves them listed).
-      if (access) {
-        for (const spec of protectedSpecs) {
-          await access
-            .sync(spec.name, servedHosts(spec, this.settings.appsDomain), true)
-            .catch(() => {})
-        }
-      }
-      return pending.map((p) => p.spec.name)
+    const pending: { spec: AppSpec; files: AppFiles; site: string }[] = []
+    for (const spec of await this.#store.list()) {
+      // Compose files carry DATABASE_URL and app.json the env; older ones were written
+      // readable by everyone.
+      await this.#store.lockDown(spec.name)
+      const files = await this.#store.read(spec.name)
+      const service = files && composeService(files.compose)
+      if (!files || !service) continue
+      const site = renderSite(spec, this.settings, service)
+      if (files.site !== site) pending.push({ spec, files, site })
     }
+    if (pending.length === 0) return []
+    // Protected apps' new hosts go behind Access before Caddy serves them, next to the old
+    // ones: whatever fails from here on (another app's Access update, Caddy's reload), every
+    // host that might be served stays protected. It narrows to the new hosts at the end.
+    const access = this.#access
+    const protectedSpecs = pending.filter((p) => p.spec.protected).map((p) => p.spec)
+    if (access) {
+      for (const spec of protectedSpecs) {
+        await this.#cloudflare(`protect ${spec.name} with Cloudflare Access`, () =>
+          access.extend(spec.name, servedHosts(spec, this.settings.appsDomain)),
+        )
+      }
+    }
+    for (const { spec, files, site } of pending)
+      await this.#store.write(spec.name, { ...files, site })
+    const reload = await this.#reloadCaddy()
+    if (reload.code !== 0) {
+      // Put the previous sites back, so Caddy keeps a configuration it accepts; the next
+      // attempt rewrites them again.
+      for (const { spec, files } of pending) await this.#store.write(spec.name, files)
+      await this.#reloadCaddy()
+      throw new AgentError('Caddy rejected the rewritten sites', 500, tail(reload))
+    }
+    // The old hosts are gone from Caddy now; protection can drop them (extra hosts would be
+    // harmless, so a failure here only leaves them listed).
+    if (access) {
+      for (const spec of protectedSpecs) {
+        await access
+          .sync(spec.name, servedHosts(spec, this.settings.appsDomain), true)
+          .catch(() => {})
+      }
+    }
+    return pending.map((p) => p.spec.name)
   }
 
   /** Prepares the app's database with its stored password (generated the first time). */
@@ -573,6 +709,7 @@ export class Apps {
       const down = await this.#compose(name, ['down', '--remove-orphans'])
       if (down.code !== 0) throw new AgentError(`Could not stop ${name}`, 500, tail(down))
       await this.#store.remove(name)
+      this.#forgetReleases(name)
       await this.#reloadCaddy()
       try {
         await this.#domains?.detach(name, customHosts(spec))

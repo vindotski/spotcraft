@@ -28,7 +28,7 @@ header. SSH accepts only keys, only for `deploy`, with modern algorithms
 only. Everything else (the agent, the dashboard, Postgres, exporters, metrics, Caddy's admin API) is
 reachable only on Docker networks.
 
-**The dashboard** requires a session for every page but the login. Sessions are signed cookies
+**The dashboard** requires a session for every page but the login and the deploy hook. Sessions are signed cookies
 (`HttpOnly`, `Secure`, `SameSite=Strict`) that expire after seven days. Five failed logins
 from one client within 15 minutes lock that client out; an IPv6 client counts by its /64, so
 cycling addresses doesn't buy more tries. App names in dashboard URLs must match the agent's
@@ -41,6 +41,19 @@ first sign in at Cloudflare with a one-time code, and Cloudflare also rate-limit
 dashboard accepts a request whose `Cf-Access-Jwt-Assertion` header is signed by the team's
 published keys, for the dashboard's own Access application (tokens for protected apps are
 refused), and not expired. The password login stays for use without Access.
+
+**The deploy hook** ([ADR 0029](decisions/0029-deploy-hook.md)) is the one path anyone can
+reach without a sign-in: exactly `/hooks/deploy/<name>` on the dashboard's host, which also
+bypasses Cloudflare Access through its own Access application. Each app's hook is off until
+an owner turns it on. Its token is 32 random bytes, shown once; the agent keeps only its
+SHA-256 (in `secrets.json`, mode 600) and compares digests in constant time. The dashboard only
+relays the token to the agent, behind its own token. A wrong, rotated or missing token, an app
+without a hook and an app that doesn't exist all get the same 401. The hook takes JSON only, so
+a browser can't post to it cross-site without a preflight, and the token is never a cookie.
+A leaked token can deploy any tag of that app's image and nothing else: the image, env, limits
+and domain stay as the dashboard set them, and DNS records are never taken over. At most one
+release per app waits in the queue, and it runs only if its token is still the app's, so a new
+token in the dashboard stops a leaked one at once, including releases already waiting.
 
 **The agent** sits on internal Docker networks only: `control`, shared with the dashboard
 alone, and `db`, shared with Postgres. It accepts requests only from the dashboard's fixed

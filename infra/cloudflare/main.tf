@@ -151,3 +151,29 @@ resource "cloudflare_zero_trust_access_application" "dashboard" {
     precedence = 1
   }]
 }
+
+# The deploy hook (ADR 0029): an app's CI calls <dashboard>/hooks/deploy/<name> with no sign-in,
+# so that path bypasses Access. A path's application is more specific than the dashboard's, so it wins
+# there. The dashboard checks each request's hook token itself.
+resource "cloudflare_zero_trust_access_policy" "deploy_hook" {
+  count = local.access ? 1 : 0
+
+  account_id = var.account_id
+  name       = "spotcraft-deploy-hook"
+  decision   = "bypass"
+  include    = [{ everyone = {} }]
+}
+
+resource "cloudflare_zero_trust_access_application" "deploy_hook" {
+  count = local.access ? 1 : 0
+
+  account_id           = var.account_id
+  name                 = "Spotcraft deploy hook"
+  type                 = "self_hosted"
+  domain               = "${var.dashboard_domain}/hooks/deploy"
+  app_launcher_visible = false
+  policies = [{
+    id         = cloudflare_zero_trust_access_policy.deploy_hook[0].id
+    precedence = 1
+  }]
+}

@@ -7,6 +7,7 @@ import {
   nameParamsSchema,
   RESERVED_NAMES,
   servedHosts,
+  TAG,
 } from './app-spec.ts'
 import { AgentError, type Apps } from './apps.ts'
 
@@ -218,6 +219,69 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
       const deleted = await apps.deleteUser(request.params.name, request.params.id)
       return deleted ? reply.code(204).send() : reply.code(404).send({ error: 'No such user' })
     },
+  )
+
+  // The app's deploy hook (ADR 0029). The dashboard manages its token: a new one is returned
+  // once, and only its hash is kept.
+  app.get<{ Params: NameParams }>(
+    '/apps/:name/hook-token',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) => {
+      const enabled = await apps.hasHookToken(request.params.name)
+      return enabled === undefined ? reply.code(404).send({ error: 'No such app' }) : { enabled }
+    },
+  )
+
+  app.post<{ Params: NameParams }>(
+    '/apps/:name/hook-token',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) =>
+      reply.code(201).send({ token: await apps.createHookToken(request.params.name) }),
+  )
+
+  app.delete<{ Params: NameParams }>(
+    '/apps/:name/hook-token',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) => {
+      await apps.deleteHookToken(request.params.name)
+      return reply.code(204).send()
+    },
+  )
+
+  // A release from the app's CI, relayed by the dashboard: the hook token comes in
+  // X-Hook-Token, next to the dashboard's own token. Only the tag can change.
+  const hookHeaders = {
+    type: 'object',
+    required: ['x-hook-token'],
+    properties: { 'x-hook-token': { type: 'string', minLength: 1, maxLength: 256 } },
+  } as const
+  type HookHeaders = { 'x-hook-token': string }
+
+  app.post<{ Params: NameParams; Body: { tag: string }; Headers: HookHeaders }>(
+    '/apps/:name/release',
+    {
+      schema: {
+        params: nameParamsSchema,
+        headers: hookHeaders,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['tag'],
+          properties: { tag: { type: 'string', pattern: TAG } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { name } = request.params
+      const state = await apps.release(name, request.headers['x-hook-token'], request.body.tag)
+      return reply.code(202).send(state)
+    },
+  )
+
+  app.get<{ Params: NameParams; Headers: HookHeaders }>(
+    '/apps/:name/release',
+    { schema: { params: nameParamsSchema, headers: hookHeaders } },
+    async (request) => apps.releaseState(request.params.name, request.headers['x-hook-token']),
   )
 
   app.get<{ Params: NameParams; Querystring: { tail: number } }>(

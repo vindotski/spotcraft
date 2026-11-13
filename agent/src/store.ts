@@ -13,6 +13,8 @@ export interface AppFiles {
 export interface AppSecrets {
   /** Password of the app's Postgres role. */
   databasePassword?: string
+  /** SHA-256 (hex) of the app's deploy hook token; the token itself is never stored (ADR 0029). */
+  hookTokenHash?: string
 }
 
 export class Store {
