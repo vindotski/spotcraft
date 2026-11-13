@@ -8,6 +8,7 @@ OpenTofu module that creates both servers on Hetzner Cloud:
 | `spotcraft-ops`      | `cax11` (2 ARM vCPU, 4 GB), Debian 13, private IP `10.0.0.3`                  |
 | `spotcraft` network  | `10.0.0.0/16`, subnet `10.0.0.0/24` in `eu-central`                           |
 | `spotcraft` firewall | in: SSH (22), HTTP (80), HTTPS (443 TCP + UDP), ping; everything else dropped |
+|                      | with `edge = "cloudflare"`, 80 and 443 are closed too (Cloudflare Tunnels)    |
 | `spotcraft-deploy`   | the deploy user's SSH key                                                     |
 
 Both servers boot with [`../cloud-init.yaml`](../cloud-init.yaml): a `deploy` user (key
@@ -54,6 +55,7 @@ somewhere safe: without it, OpenTofu no longer knows it manages these servers.
 | `ssh_source_ips`        | anywhere       | who may reach SSH (GitHub Actions needs it)      |
 | `protect_servers`       | `true`         | Hetzner delete and rebuild protection            |
 | `apps_server_backups`   | `false`        | daily Hetzner backups of the apps server (+20%)  |
+| `edge`                  | `direct`       | `cloudflare` closes 80/443 (`../cloudflare`)     |
 
 To remove everything: set `protect_servers = false`, `tofu apply`, then `tofu destroy`.
 

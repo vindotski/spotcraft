@@ -15,6 +15,9 @@
   const m = $derived(data.metrics)
   const last = (series: Array<[number, number]>) => (series.length ? series[series.length - 1][1] : null)
   let redeploying = $state(false)
+
+  const stateLabel = { active: 'Active', pending: 'Pending', missing: 'Missing', unknown: 'Not checked' }
+  const modeLabel = { zone: 'DNS by Spotcraft', saas: 'Cloudflare custom hostname', manual: 'DNS set by hand' }
   let purge = $state(false)
 </script>
 
@@ -29,8 +32,10 @@
       <StatusBadge state={app.state} health={app.health} />
     </div>
     <p class="mt-1 text-sm text-muted-foreground">
-      <a href="https://{app.domain}" class="hover:underline" target="_blank" rel="noopener noreferrer">{app.domain}</a>
-      · <span class="font-mono">{app.image}:{app.tag}</span>
+      {#each app.hostnames as host (host)}
+        <a href="https://{host}" class="hover:underline" target="_blank" rel="noopener noreferrer">{host}</a><span aria-hidden="true" class="px-1">·</span>
+      {/each}
+      <span class="font-mono">{app.image}:{app.tag}</span>
       {#if app.status}· {app.status}{/if}
     </p>
   </div>
@@ -56,7 +61,7 @@
         <AlertDialog.Header>
           <AlertDialog.Title>Remove {app.name}?</AlertDialog.Title>
           <AlertDialog.Description>
-            Stops the container and removes its settings and its site. {app.domain} stops answering. The image stays on Docker Hub, so you can add it again.
+            Stops the container and removes its settings and its site. {app.hostnames.join(' and ')} stop answering. The image stays on Docker Hub, so you can add it again.
             {#if app.database}
               Its database is kept, so adding the app again brings its data back, unless you delete it below.
             {/if}
@@ -97,7 +102,7 @@
 {/if}
 
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-  <Stat label="Reachable now" value={m.up === null ? '—' : m.up === 1 ? 'Yes' : 'No'} detail="HTTPS check from the ops server" />
+  <Stat label="Reachable now" value={m.up === null ? '—' : m.up === 1 ? 'Yes' : 'No'} detail={app.protected ? "Every address, from the ops server, up to the Access sign-in" : "Every address, checked over HTTPS from the ops server"} />
   <Stat label="Uptime" value={uptime(m.uptimeDay)} detail="Last 24 hours · 7 days: {uptime(m.uptimeWeek)}" />
   <Stat label="CPU" value={percent(last(m.cpu) === null ? null : (last(m.cpu) ?? 0) * 100, 1)} detail="of one core · limit {app.cpus}">
     <Sparkline series={m.cpu.map(([t, v]) => [t, v * 100] as [number, number])} format={(v) => percent(v, 1)} label="CPU, last hour" />
@@ -120,10 +125,49 @@
       <dd>
         {#if app.database}Postgres <span class="font-mono">app_{app.name.replaceAll('-', '_')}</span>{:else}None{/if}
       </dd>
+      <dt class="text-muted-foreground">Sign-in</dt><dd>{app.protected ? 'Cloudflare Access' : 'Public'}</dd>
       <dt class="text-muted-foreground">Environment</dt><dd>{Object.keys(app.env).length === 1 ? '1 variable' : `${Object.keys(app.env).length} variables`}</dd>
     </dl>
   </div>
 </div>
+
+{#if data.domain && data.domain.hosts.length > 0}
+  <section class="mt-8">
+    <h2 class="mb-2 font-heading text-lg font-semibold">Domain</h2>
+    <ul class="space-y-3">
+      {#each data.domain.hosts as host (host.host)}
+        <li class="border p-4 text-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-mono">{host.host}</span>
+            <span class={['text-xs', host.state === 'active' ? 'text-muted-foreground' : 'text-destructive']}>
+              {stateLabel[host.state]} · {modeLabel[host.mode]}
+            </span>
+          </div>
+          {#if host.detail}<p class="mt-1 text-xs text-muted-foreground">{host.detail}</p>{/if}
+          {#if host.state !== 'active' && host.records.length > 0}
+            <p class="mt-3 text-xs text-muted-foreground">Add these records where the domain's DNS is hosted:</p>
+            <div class="mt-1 overflow-x-auto">
+              <table class="w-full text-left font-mono text-xs">
+                <tbody>
+                  {#each host.records as record (record.type + record.name)}
+                    <tr>
+                      <td class="py-1 pr-4">{record.type}</td>
+                      <td class="py-1 pr-4 break-all">{record.name}</td>
+                      <td class="py-1 break-all">{record.value}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+            {#if host.mode === 'saas' && host.host.split('.').length === 2}
+              <p class="mt-2 text-xs text-muted-foreground">A root domain needs CNAME flattening (or an ALIAS record) at its DNS provider.</p>
+            {/if}
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  </section>
+{/if}
 
 <section class="mt-8">
   <h2 class="mb-2 font-heading text-lg font-semibold">Logs</h2>

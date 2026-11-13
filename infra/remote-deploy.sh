@@ -10,7 +10,13 @@
 #   apps: PRIVATE_IP          this server's private address
 #   apps: OPS_PRIVATE_IP      the ops server's private address (the only agent client)
 #   apps: POSTGRES_AGENT_PASSWORD  password of the agent's Postgres role (spotcraft_agent)
+#   apps: APPS_DOMAIN         optional; every app is also served at <name>.<APPS_DOMAIN>
+#   apps: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_APPS_ZONE_ID,
+#         CLOUDFLARE_TUNNEL_ID   optional; the agent sets up custom domains' DNS (ADR 0021)
+#   apps: CLOUDFLARE_ACCESS_POLICY_ID  optional; lets apps be put behind Cloudflare Access
 #   ops:  APPS_PRIVATE_IP, DASHBOARD_DOMAIN, DASHBOARD_PASSWORD_HASH, SESSION_SECRET
+#   EDGE                      optional; cloudflare = behind a Cloudflare Tunnel (ADR 0021)
+#   CLOUDFLARE_TUNNEL_TOKEN   this server's tunnel token; required with EDGE=cloudflare
 set -euo pipefail
 cd /opt/spotcraft
 
@@ -34,13 +40,44 @@ require() {
   done
 }
 
+# Like require, for values that may be left out.
+optional() {
+  for name in "$@"; do
+    [ -n "${!name:-}" ] && require "$name"
+    printf -v "$name" '%s' "${!name:-}"
+  done
+}
+
 require ROLE SPOTCRAFT_TAG IMAGE_NAMESPACE AGENT_TOKEN
+
+# Behind a Cloudflare Tunnel, cloudflared runs (its Compose profile), Caddy is only published
+# on loopback and serves plain HTTP, and it trusts the visitor's address from cloudflared.
+EDGE="${EDGE:-direct}"
+case "$EDGE" in
+  direct)
+    CLOUDFLARE_TUNNEL_TOKEN=""
+    EDGE_ENV=""
+    ;;
+  cloudflare)
+    require CLOUDFLARE_TUNNEL_TOKEN
+    EDGE_ENV="COMPOSE_PROFILES=cloudflare
+CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN
+PUBLIC_BIND=127.0.0.1
+CADDY_TRUSTED_PROXIES=private_ranges"
+    ;;
+  *)
+    echo "::error::EDGE must be direct or cloudflare" >&2
+    exit 1
+    ;;
+esac
 
 # Only the deploy user can read the file with the secrets.
 umask 077
 case "$ROLE" in
   apps)
     require PRIVATE_IP OPS_PRIVATE_IP POSTGRES_AGENT_PASSWORD
+    optional APPS_DOMAIN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_APPS_ZONE_ID CLOUDFLARE_TUNNEL_ID
+    optional CLOUDFLARE_ACCESS_POLICY_ID
     DOCKER_GID="$(getent group docker | cut -d: -f3)"
     # Postgres needs a superuser password once, when its data directory is created; nobody
     # uses it afterwards (the superuser only works over the container's local socket). It is
@@ -58,6 +95,13 @@ AGENT_TOKEN=$AGENT_TOKEN
 DOCKER_GID=$DOCKER_GID
 POSTGRES_AGENT_PASSWORD=$POSTGRES_AGENT_PASSWORD
 POSTGRES_SUPERUSER_PASSWORD=$POSTGRES_SUPERUSER_PASSWORD
+APPS_DOMAIN=$APPS_DOMAIN
+EDGE=$EDGE
+CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_APPS_ZONE_ID=$CLOUDFLARE_APPS_ZONE_ID
+CLOUDFLARE_TUNNEL_ID=$CLOUDFLARE_TUNNEL_ID
+CLOUDFLARE_ACCESS_POLICY_ID=$CLOUDFLARE_ACCESS_POLICY_ID
 ENV
     ;;
   ops)
@@ -71,12 +115,14 @@ AGENT_TOKEN=$AGENT_TOKEN
 DASHBOARD_PASSWORD_HASH=$DASHBOARD_PASSWORD_HASH
 SESSION_SECRET=$SESSION_SECRET
 ENV
+    if [ "$EDGE" = cloudflare ]; then echo "DASHBOARD_SCHEME=http://" >> .env.new; fi
     ;;
   *)
     echo "::error::ROLE must be apps or ops" >&2
     exit 1
     ;;
 esac
+if [ -n "$EDGE_ENV" ]; then printf '%s\n' "$EDGE_ENV" >> .env.new; fi
 mv .env.new .env
 
 # --- Host settings --------------------------------------------------------------------------
@@ -130,6 +176,10 @@ fi
 
 docker compose config --quiet
 docker compose pull --quiet
+# Back to direct: cloudflared isn't an orphan (its profile is just off), so stop it explicitly.
+if [ "$EDGE" = direct ]; then
+  docker compose --profile cloudflare rm --stop --force cloudflared
+fi
 docker compose up -d --wait --wait-timeout 180 --remove-orphans
 
 # The agent's Postgres role: created on the first deploy, its password kept in step with the

@@ -33,6 +33,14 @@ jobs:
       APPS_PRIVATE_IP: ${{ vars.APPS_PRIVATE_IP || '10.0.0.2' }}
       OPS_PRIVATE_IP: ${{ vars.OPS_PRIVATE_IP || '10.0.0.3' }}
       DASHBOARD_DOMAIN: ${{ vars.DASHBOARD_DOMAIN }}
+      APPS_DOMAIN: ${{ vars.APPS_DOMAIN }}
+      # cloudflare: both servers sit behind Cloudflare Tunnels (ADR 0021); default direct.
+      EDGE: ${{ vars.EDGE || 'direct' }}
+      # Optional: the agent sets up custom domains' DNS (infra/cloudflare's agent_settings).
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_APPS_ZONE_ID: ${{ vars.CLOUDFLARE_APPS_ZONE_ID }}
+      CLOUDFLARE_TUNNEL_ID: ${{ vars.CLOUDFLARE_TUNNEL_ID }}
+      CLOUDFLARE_ACCESS_POLICY_ID: ${{ vars.CLOUDFLARE_ACCESS_POLICY_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,6 +50,10 @@ jobs:
         run: |
           if [[ ! "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
             echo "::error::Invalid image tag: $TAG"
+            exit 1
+          fi
+          if [[ "$EDGE" != direct && "$EDGE" != cloudflare ]]; then
+            echo "::error::EDGE must be direct or cloudflare"
             exit 1
           fi
           for name in APPS_HOST OPS_HOST DASHBOARD_DOMAIN; do
@@ -75,12 +87,18 @@ jobs:
         env:
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
           POSTGRES_AGENT_PASSWORD: ${{ secrets.POSTGRES_AGENT_PASSWORD }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN_APPS }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           scp infra/apps-server/compose.yaml infra/apps-server/Caddyfile infra/apps-server/pg_hba.conf apps:/opt/spotcraft/
           {
             printf 'export ROLE=apps SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q PRIVATE_IP=%q OPS_PRIVATE_IP=%q AGENT_TOKEN=%q\n' \
               "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$OPS_PRIVATE_IP" "$AGENT_TOKEN"
-            printf 'export POSTGRES_AGENT_PASSWORD=%q\n' "$POSTGRES_AGENT_PASSWORD"
+            printf 'export POSTGRES_AGENT_PASSWORD=%q APPS_DOMAIN=%q\n' "$POSTGRES_AGENT_PASSWORD" "$APPS_DOMAIN"
+            printf 'export EDGE=%q CLOUDFLARE_TUNNEL_TOKEN=%q\n' "$EDGE" "$CLOUDFLARE_TUNNEL_TOKEN"
+            printf 'export CLOUDFLARE_API_TOKEN=%q CLOUDFLARE_ACCOUNT_ID=%q CLOUDFLARE_APPS_ZONE_ID=%q CLOUDFLARE_TUNNEL_ID=%q\n' \
+              "$CLOUDFLARE_API_TOKEN" "$CLOUDFLARE_ACCOUNT_ID" "$CLOUDFLARE_APPS_ZONE_ID" "$CLOUDFLARE_TUNNEL_ID"
+            printf 'export CLOUDFLARE_ACCESS_POLICY_ID=%q\n' "$CLOUDFLARE_ACCESS_POLICY_ID"
             cat infra/remote-deploy.sh
           } | ssh apps bash -s
 
@@ -89,24 +107,38 @@ jobs:
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
           DASHBOARD_PASSWORD_HASH: ${{ secrets.DASHBOARD_PASSWORD_HASH }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN_OPS }}
         run: |
-          scp infra/ops-server/compose.yaml infra/ops-server/Caddyfile infra/ops-server/scrape.yaml ops:/opt/spotcraft/
+          scp infra/ops-server/compose.yaml infra/ops-server/Caddyfile infra/ops-server/scrape.yaml infra/ops-server/blackbox.yml ops:/opt/spotcraft/
           {
             printf 'export ROLE=ops SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q APPS_PRIVATE_IP=%q DASHBOARD_DOMAIN=%q\n' \
               "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$DASHBOARD_DOMAIN"
             printf 'export AGENT_TOKEN=%q DASHBOARD_PASSWORD_HASH=%q SESSION_SECRET=%q\n' \
               "$AGENT_TOKEN" "$DASHBOARD_PASSWORD_HASH" "$SESSION_SECRET"
+            printf 'export EDGE=%q CLOUDFLARE_TUNNEL_TOKEN=%q\n' "$EDGE" "$CLOUDFLARE_TUNNEL_TOKEN"
             cat infra/remote-deploy.sh
           } | ssh ops bash -s
 
+      # The login page, or, with Cloudflare Access in front, a redirect to Access's sign-in.
       - name: Check the dashboard from outside
         run: |
+          check() {
+            local result
+            result="$(curl -s -o /tmp/page -w '%{http_code} %{redirect_url}' "https://$DASHBOARD_DOMAIN/login")" || return 1
+            if [[ "$result" == "200 "* ]]; then
+              grep -q 'Log in · Spotcraft' /tmp/page
+            elif [[ "$result" =~ ^30[27]\ https://[a-z0-9-]+\.cloudflareaccess\.com/ ]]; then
+              echo "Behind Cloudflare Access"
+            else
+              echo "Got: $result"
+              return 1
+            fi
+          }
           for _ in $(seq 1 30); do
-            curl -sf -o /dev/null "https://$DASHBOARD_DOMAIN/login" && break
+            check && break
             sleep 4
           done
-          page="$(curl -sf "https://$DASHBOARD_DOMAIN/login")"
-          grep -q 'Log in · Spotcraft' <<<"$page"
+          check
           echo "Spotcraft $TAG is live at https://$DASHBOARD_DOMAIN"
 
       - name: Remove SSH key

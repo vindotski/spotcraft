@@ -1,13 +1,32 @@
+import { AccessApps } from './access.ts'
 import { buildApp } from './app.ts'
 import { Apps } from './apps.ts'
+import { CloudflareApi } from './cloudflare.ts'
 import { loadConfig } from './config.ts'
 import { postgresDatabases } from './databases.ts'
+import { Domains } from './domains.ts'
 import { execRunner } from './runner.ts'
 import { Store } from './store.ts'
 
 const config = loadConfig()
 const databases = config.postgresUrl ? postgresDatabases(config.postgresUrl) : undefined
-const apps = new Apps(new Store(config.dataDir), execRunner, config.caddyContainer, databases)
+const cf = config.cloudflare
+const api = cf ? new CloudflareApi(cf.apiToken, cf.accountId) : undefined
+const cloudflare =
+  cf && api
+    ? {
+        domains: new Domains({ api, appsZoneId: cf.appsZoneId, tunnelId: cf.tunnelId }),
+        access: cf.accessPolicyId ? new AccessApps(api, cf.accessPolicyId) : undefined,
+      }
+    : undefined
+const apps = new Apps(
+  new Store(config.dataDir),
+  execRunner,
+  config.caddyContainer,
+  databases,
+  { appsDomain: config.appsDomain, edge: config.edge },
+  cloudflare,
+)
 const app = buildApp({
   token: config.token,
   apps,
@@ -27,6 +46,24 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 await app.listen({ host: config.host, port: config.port })
+
+// Sites follow EDGE and APPS_DOMAIN: after either changed, rewrite every app's site. Caddy
+// may still be starting (both start in the same deploy), so a failed reload is retried.
+for (let attempt = 1; attempt <= 24; attempt++) {
+  try {
+    const changed = await apps.refreshSites()
+    if (changed.length > 0)
+      app.log.info({ changed }, 'app sites rewritten for the current settings')
+    break
+  } catch (error) {
+    if (attempt === 24) {
+      app.log.error({ err: error }, 'gave up rewriting app sites')
+      break
+    }
+    app.log.warn({ attempt }, 'could not reload Caddy with rewritten sites; retrying')
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+  }
+}
 
 // After an upgrade, bring every app database up to date. Postgres may still be starting
 // (both start in the same deploy), so failures are retried for a few minutes.

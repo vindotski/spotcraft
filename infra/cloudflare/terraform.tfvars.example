@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (git-ignored). Give the API token through the environment:
+#   export CLOUDFLARE_API_TOKEN=...
+account_id       = "0123456789abcdef0123456789abcdef"
+apps_domain      = "example.com"
+dashboard_domain = "dash.example.com"
+
+# Optional:
+# access_emails    = ["you@example.com"]  # Access in front of the dashboard
+# custom_hostnames = true                 # after enabling Custom Hostnames on the apps zone
+# dashboard_zone   = "example.org"        # when the dashboard is in another zone
+# extra_zones      = ["myapp.com"]        # apps' custom domains, for the same TLS settings
+# login_rate_limit = 10
+# bot_fight_mode   = false
+# block_ai_bots    = false
+# route_dns        = false                # while moving an existing instance

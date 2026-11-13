@@ -36,6 +36,6 @@ updates:
       server-images: { patterns: ["*"] }
 
   - package-ecosystem: terraform
-    directory: /infra/hetzner
+    directories: [/infra/hetzner, /infra/cloudflare]
     schedule: { interval: weekly }
     cooldown: { default-days: 1 }

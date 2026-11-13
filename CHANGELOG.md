@@ -10,6 +10,36 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+An address for every app, and Spotcraft behind Cloudflare if you want it
+([ADR 0021](docs/decisions/0021-cloudflare-edge.md)). Nothing changes until you set the new
+settings.
+
+### Added
+
+- **Default subdomains**: with the `APPS_DOMAIN` variable, every app is served at
+  `<name>.<APPS_DOMAIN>`; the app's `domain` becomes an optional custom domain. The agent has
+  `GET /settings`, and every app lists its `hostnames`.
+- **`infra/cloudflare`**, an OpenTofu module: Cloudflare Tunnels for both servers, the wildcard
+  and dashboard records, zone TLS settings, bot switches, a rate limit on `/login`, Access in
+  front of the dashboard, and Cloudflare for SaaS for custom domains outside the account.
+- **Tunnel mode** (`EDGE=cloudflare` with the `CLOUDFLARE_TUNNEL_TOKEN_APPS` and `_OPS` secrets):
+  `cloudflared` runs on both servers, Caddy is published on loopback only, and the dashboard and
+  apps are served over plain HTTP to the tunnel. `infra/hetzner` gains `edge = "cloudflare"` to
+  close ports 80 and 443.
+- **Custom domains through Cloudflare**: with the agent's `CLOUDFLARE_*` settings, a domain in the
+  account gets a proxied CNAME to the tunnel, and any other domain a custom hostname. The dashboard
+  shows each domain's status and the records still to add. `PUT /apps/:name?takeOver=true` replaces
+  records Spotcraft didn't make.
+- **Require sign-in**: `protected: true` puts an app behind Cloudflare Access with the owners'
+  policy (`CLOUDFLARE_ACCESS_POLICY_ID`). Its uptime probe expects the Access sign-in redirect.
+
+### Changed
+
+- Caddy passes each visitor's address to apps and the dashboard as `X-Forwarded-For`, and trusts
+  `CF-Connecting-IP` only from `CADDY_TRUSTED_PROXIES` (loopback unless behind the tunnel).
+- The ops server gets `blackbox.yml` with the probe modules; the Deploy workflow copies it.
+- The Deploy workflow's final check also accepts a redirect to Cloudflare Access.
+
 ## [0.2.0] - 2026-11-08
 
 Databases for hosted apps, and a backend kit that gives server-rendered apps guest accounts:

@@ -24,7 +24,7 @@
 {:else if data.apps.length === 0}
   <div class="border p-10 text-center">
     <p class="font-medium">No apps yet</p>
-    <p class="mt-1 text-sm text-muted-foreground">Add a Docker image, give it a domain, and Spotcraft runs it behind HTTPS.</p>
+    <p class="mt-1 text-sm text-muted-foreground">Add a Docker image and Spotcraft runs it behind HTTPS, on its own subdomain or your domain.</p>
     <Button href="/apps/new" class="mt-4">Add your first app</Button>
   </div>
 {:else}
@@ -43,7 +43,8 @@
           <Table.Row>
             <Table.Cell>
               <a href="/apps/{app.name}" class="font-medium hover:underline">{app.name}</a>
-              <a href="https://{app.domain}" class="block text-xs text-muted-foreground hover:underline" rel="noopener noreferrer" target="_blank">{app.domain}</a>
+              {@const host = app.domain ?? app.hostnames[0]}
+              <a href="https://{host}" class="block text-xs text-muted-foreground hover:underline" rel="noopener noreferrer" target="_blank">{host}</a>
             </Table.Cell>
             <Table.Cell><StatusBadge state={app.state} health={app.health} /></Table.Cell>
             <Table.Cell class="hidden font-mono text-xs sm:table-cell">{app.image}:{app.tag}</Table.Cell>

@@ -22,12 +22,16 @@ services:
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev
     mem_limit: 256m
+    # 127.0.0.1 behind a Cloudflare Tunnel (PUBLIC_BIND), so nothing outside reaches Caddy.
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${PUBLIC_BIND:-0.0.0.0}:80:80"
+      - "${PUBLIC_BIND:-0.0.0.0}:443:443"
+      - "${PUBLIC_BIND:-0.0.0.0}:443:443/udp"
     environment:
       DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?set DASHBOARD_DOMAIN in .env}
+      # http:// behind a Cloudflare Tunnel: Cloudflare holds the certificate.
+      DASHBOARD_SCHEME: ${DASHBOARD_SCHEME:-}
+      CADDY_TRUSTED_PROXIES: ${CADDY_TRUSTED_PROXIES:-127.0.0.1/32} # private_ranges behind Cloudflare
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -38,6 +42,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Only with COMPOSE_PROFILES=cloudflare (EDGE=cloudflare): dials out to this server's
+  # Cloudflare Tunnel and hands every request to Caddy on port 80 (ADR 0021).
+  cloudflared:
+    <<: *hardened
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
+    profiles: [cloudflare]
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:2000", "run"]
+    read_only: true
+    mem_limit: 128m
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-} # required with the profile; the deploy checks it
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   dashboard:
     <<: *hardened
@@ -99,6 +121,8 @@ services:
     user: "65534:65534" # nobody; it only makes outgoing requests
     read_only: true
     mem_limit: 128m
+    volumes:
+      - ./blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9115/-/healthy"]
       interval: 30s

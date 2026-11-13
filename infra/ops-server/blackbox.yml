@@ -1,0 +1,18 @@
+# Blackbox modules for the uptime probes (vmagent's `probes` job picks one per target).
+modules:
+  # An app answers with a 2xx after redirects (the image's own default module).
+  http_2xx:
+    prober: http
+    http:
+      preferred_ip_protocol: "ip4"
+  # A protected app (ADR 0021): Cloudflare Access answers first, with a redirect to its sign-in
+  # page. Seeing that redirect means the hostname, Cloudflare and Access are up.
+  http_access:
+    prober: http
+    http:
+      preferred_ip_protocol: "ip4"
+      follow_redirects: false
+      valid_status_codes: [302]
+      fail_if_header_not_matches:
+        - header: Location
+          regexp: '^https://[a-z0-9-]+\.cloudflareaccess\.com/'

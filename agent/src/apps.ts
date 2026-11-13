@@ -1,7 +1,18 @@
 import { randomBytes } from 'node:crypto'
-import type { AppSpec } from './app-spec.ts'
+import type { AccessApps } from './access.ts'
+import {
+  type AgentSettings,
+  type AppSpec,
+  customHosts,
+  type DomainStatus,
+  defaultHost,
+  hostnames,
+  servedHosts,
+} from './app-spec.ts'
+import { CloudflareError } from './cloudflare.ts'
+import { DomainConflict, type Domains } from './domains.ts'
 import type { Runner, RunResult } from './runner.ts'
-import type { Store } from './store.ts'
+import type { AppFiles, Store } from './store.ts'
 import { projectName, renderCompose, renderSite } from './templates.ts'
 
 export class AgentError extends Error {
@@ -21,6 +32,8 @@ export interface AppStatus extends AppSpec {
   health: string
   /** Docker's human-readable status, e.g. "Up 3 hours (healthy)". */
   status: string
+  /** Every host the app answers on, its default host first (ADR 0021). */
+  hostnames: string[]
 }
 
 /** The fields of `docker ps --format json` the agent reads. */
@@ -30,7 +43,11 @@ interface ContainerRow {
   Status?: string
 }
 
-function withStatus(spec: AppSpec, row: ContainerRow | undefined): AppStatus {
+function withStatus(
+  spec: AppSpec,
+  row: ContainerRow | undefined,
+  settings: AgentSettings,
+): AppStatus {
   const status = row?.Status ?? ''
   // `docker ps` has no health field; Docker writes it into the status text.
   const health = /\((healthy|unhealthy|health: starting)\)/.exec(status)?.[1]
@@ -39,6 +56,7 @@ function withStatus(spec: AppSpec, row: ContainerRow | undefined): AppStatus {
     state: row?.State ?? 'missing',
     health: health === 'health: starting' ? 'starting' : (health ?? ''),
     status,
+    hostnames: hostnames(spec, settings.appsDomain),
   }
 }
 
@@ -86,14 +104,46 @@ export class Apps {
   readonly #run: Runner
   readonly #caddyContainer: string
   readonly #databases: Databases | undefined
+  readonly settings: AgentSettings
+  readonly #domains: Domains | undefined
+  readonly #access: AccessApps | undefined
   #queue: Promise<unknown> = Promise.resolve()
 
   /** Without `databases`, apps can't ask for a database (the server has no Postgres). */
-  constructor(store: Store, run: Runner, caddyContainer: string, databases?: Databases) {
+  constructor(
+    store: Store,
+    run: Runner,
+    caddyContainer: string,
+    databases?: Databases,
+    settings: AgentSettings = { edge: 'direct' },
+    /**
+     * With it, custom domains' DNS is set up through the Cloudflare API and, with `access`,
+     * protected apps are put behind Cloudflare Access (ADR 0021).
+     */
+    cloudflare?: { domains: Domains; access?: AccessApps },
+  ) {
     this.#store = store
     this.#run = run
     this.#caddyContainer = caddyContainer
     this.#databases = databases
+    this.settings = {
+      ...settings,
+      dns: Boolean(cloudflare?.domains),
+      access: Boolean(cloudflare?.access),
+    }
+    this.#domains = cloudflare?.domains
+    this.#access = cloudflare?.access
+  }
+
+  /** Runs a Cloudflare step; its failures become clear agent errors. */
+  async #cloudflare<T>(what: string, step: () => Promise<T>): Promise<T> {
+    try {
+      return await step()
+    } catch (error) {
+      if (error instanceof DomainConflict) throw new AgentError(error.message, 409)
+      const detail = error instanceof CloudflareError ? error.message : message(error)
+      throw new AgentError(`Could not ${what}`, 502, detail)
+    }
   }
 
   #exclusive<T>(task: () => Promise<T>): Promise<T> {
@@ -127,14 +177,16 @@ export class Apps {
     const specs = await this.#store.list()
     if (specs.length === 0) return []
     const containers = await this.#containers()
-    return specs.map((spec) => withStatus(spec, containers.get(projectName(spec.name))))
+    return specs.map((spec) =>
+      withStatus(spec, containers.get(projectName(spec.name)), this.settings),
+    )
   }
 
   async get(name: string): Promise<AppStatus | undefined> {
     const spec = await this.#store.get(name)
     if (!spec) return undefined
     const containers = await this.#containers(projectName(name))
-    return withStatus(spec, containers.get(projectName(name)))
+    return withStatus(spec, containers.get(projectName(name)), this.settings)
   }
 
   /**
@@ -163,43 +215,168 @@ export class Apps {
     return rows
   }
 
-  /** Writes the app's files and rolls it out; on failure, puts the previous version back. */
-  deploy(spec: AppSpec): Promise<AppStatus> {
+  /**
+   * Writes the app's files and rolls it out; on failure, puts the previous version back.
+   * With `takeOver`, a custom domain's existing DNS records are replaced (ADR 0021).
+   */
+  deploy(spec: AppSpec, { takeOver = false } = {}): Promise<AppStatus> {
     return this.#exclusive(async () => {
-      // The database first: if it can't be prepared, nothing else has changed yet.
-      const databaseUrl = spec.database ? await this.#provision(spec.name) : undefined
-      const previous = await this.#store.read(spec.name)
-      const next = {
-        spec: `${JSON.stringify(spec, null, 2)}\n`,
-        compose: renderCompose(spec, databaseUrl),
-        site: renderSite(spec),
+      const previousSpec = await this.#store.get(spec.name)
+      const oldHosts = previousSpec ? customHosts(previousSpec) : []
+      const newHosts = customHosts(spec)
+      // DNS first, then the database: if either can't be prepared, the app hasn't changed yet.
+      const domains = this.#domains
+      const undoDns = domains
+        ? await this.#cloudflare(`set up DNS for ${spec.domain}`, () =>
+            domains.attach(spec.name, newHosts, { takeOver }),
+          )
+        : undefined
+      const access = this.#access
+      let status: AppStatus
+      try {
+        // Protection goes on before the new version takes traffic.
+        if (access) {
+          await this.#cloudflare('set up Cloudflare Access', () =>
+            access.sync(
+              spec.name,
+              servedHosts(spec, this.settings.appsDomain),
+              Boolean(spec.protected),
+            ),
+          )
+        }
+        status = await this.#rollOut(spec)
+      } catch (error) {
+        // Put DNS back exactly as it was (records a take-over replaced included), and the
+        // previous protection (best effort).
+        await undoDns?.()
+        await access
+          ?.sync(
+            spec.name,
+            previousSpec ? servedHosts(previousSpec, this.settings.appsDomain) : [],
+            Boolean(previousSpec?.protected),
+          )
+          .catch(() => {})
+        throw error
       }
-      await this.#store.write(spec.name, next)
+      // A domain the app no longer has: its records go, now that the new version runs.
+      const dropped = oldHosts.filter((host) => !newHosts.includes(host))
+      await this.#domains?.detach(spec.name, dropped).catch((error) => {
+        console.warn(`could not remove DNS records for ${dropped.join(', ')}: ${message(error)}`)
+      })
+      return status
+    })
+  }
 
-      const pull = await this.#compose(spec.name, ['pull', '--quiet'])
-      if (pull.code !== 0) {
-        await this.#restore(spec.name, previous)
-        throw new AgentError(`Could not pull ${spec.image}:${spec.tag}`, 502, tail(pull))
+  async #rollOut(spec: AppSpec): Promise<AppStatus> {
+    const databaseUrl = spec.database ? await this.#provision(spec.name) : undefined
+    const previous = await this.#store.read(spec.name)
+    const next = {
+      spec: `${JSON.stringify(spec, null, 2)}\n`,
+      compose: renderCompose(spec, databaseUrl),
+      site: renderSite(spec, this.settings),
+    }
+    await this.#store.write(spec.name, next)
+
+    const pull = await this.#compose(spec.name, ['pull', '--quiet'])
+    if (pull.code !== 0) {
+      await this.#restore(spec.name, previous)
+      throw new AgentError(`Could not pull ${spec.image}:${spec.tag}`, 502, tail(pull))
+    }
+    const up = await this.#compose(spec.name, ['up', '-d', '--wait', '--wait-timeout', '120'])
+    if (up.code !== 0) {
+      const logs = await this.#compose(spec.name, ['logs', '--tail', '50', '--no-color'])
+      await this.#restore(spec.name, previous)
+      throw new AgentError(
+        `${spec.name} did not start or become healthy`,
+        502,
+        `${tail(up)}\n${tail(logs)}`,
+      )
+    }
+    const reload = await this.#reloadCaddy()
+    if (reload.code !== 0) {
+      await this.#restore(spec.name, previous)
+      throw new AgentError('Caddy rejected the site configuration', 500, tail(reload))
+    }
+    return withStatus(
+      spec,
+      (await this.#containers(projectName(spec.name))).get(projectName(spec.name)),
+      this.settings,
+    )
+  }
+
+  /** Where the app's custom domain stands; undefined if there is no such app. */
+  async domainStatus(name: string): Promise<DomainStatus | undefined> {
+    const spec = await this.#store.get(name)
+    if (!spec) return undefined
+    const { appsDomain, edge } = this.settings
+    const target = appsDomain ? defaultHost(name, appsDomain) : undefined
+    const hosts = customHosts(spec)
+    if (this.#domains && target) {
+      return { target, hosts: await this.#domains.status(name, hosts, target) }
+    }
+    // Spotcraft doesn't manage DNS: say what to create by hand.
+    return {
+      target,
+      hosts: hosts.map((host) => ({
+        host,
+        mode: 'manual',
+        state: 'unknown',
+        records: [
+          target && edge === 'cloudflare'
+            ? { type: 'CNAME', name: host, value: target }
+            : { type: 'A/AAAA', name: host, value: 'the apps server' },
+        ],
+      })),
+    }
+  }
+
+  /**
+   * Rewrites every app's Caddy site for the current settings and reloads Caddy if any
+   * changed. Sites depend on EDGE and APPS_DOMAIN, so after either changes (a redeploy of
+   * Spotcraft), every app must follow, not only the next one deployed. Returns the apps whose
+   * site changed.
+   */
+  refreshSites(): Promise<string[]> {
+    return this.#exclusive(async () => {
+      const pending: { spec: AppSpec; files: AppFiles; site: string }[] = []
+      for (const spec of await this.#store.list()) {
+        const files = await this.#store.read(spec.name)
+        const site = renderSite(spec, this.settings)
+        if (files && files.site !== site) pending.push({ spec, files, site })
       }
-      const up = await this.#compose(spec.name, ['up', '-d', '--wait', '--wait-timeout', '120'])
-      if (up.code !== 0) {
-        const logs = await this.#compose(spec.name, ['logs', '--tail', '50', '--no-color'])
-        await this.#restore(spec.name, previous)
-        throw new AgentError(
-          `${spec.name} did not start or become healthy`,
-          502,
-          `${tail(up)}\n${tail(logs)}`,
-        )
+      if (pending.length === 0) return []
+      // Protected apps' new hosts go behind Access before Caddy serves them, next to the old
+      // ones: whatever fails from here on (another app's Access update, Caddy's reload), every
+      // host that might be served stays protected. It narrows to the new hosts at the end.
+      const access = this.#access
+      const protectedSpecs = pending.filter((p) => p.spec.protected).map((p) => p.spec)
+      if (access) {
+        for (const spec of protectedSpecs) {
+          await this.#cloudflare(`protect ${spec.name} with Cloudflare Access`, () =>
+            access.extend(spec.name, servedHosts(spec, this.settings.appsDomain)),
+          )
+        }
       }
+      for (const { spec, files, site } of pending)
+        await this.#store.write(spec.name, { ...files, site })
       const reload = await this.#reloadCaddy()
       if (reload.code !== 0) {
-        await this.#restore(spec.name, previous)
-        throw new AgentError('Caddy rejected the site configuration', 500, tail(reload))
+        // Put the previous sites back, so Caddy keeps a configuration it accepts; the next
+        // attempt rewrites them again.
+        for (const { spec, files } of pending) await this.#store.write(spec.name, files)
+        await this.#reloadCaddy()
+        throw new AgentError('Caddy rejected the rewritten sites', 500, tail(reload))
       }
-      return withStatus(
-        spec,
-        (await this.#containers(projectName(spec.name))).get(projectName(spec.name)),
-      )
+      // The old hosts are gone from Caddy now; protection can drop them (extra hosts would be
+      // harmless, so a failure here only leaves them listed).
+      if (access) {
+        for (const spec of protectedSpecs) {
+          await access
+            .sync(spec.name, servedHosts(spec, this.settings.appsDomain), true)
+            .catch(() => {})
+        }
+      }
+      return pending.map((p) => p.spec.name)
     })
   }
 
@@ -277,11 +454,22 @@ export class Apps {
    */
   remove(name: string, { purge = false } = {}): Promise<boolean> {
     return this.#exclusive(async () => {
-      if (!(await this.#store.read(name))) return false
+      const spec = await this.#store.get(name)
+      if (!spec) return false
       const down = await this.#compose(name, ['down', '--remove-orphans'])
       if (down.code !== 0) throw new AgentError(`Could not stop ${name}`, 500, tail(down))
       await this.#store.remove(name)
       await this.#reloadCaddy()
+      try {
+        await this.#domains?.detach(name, customHosts(spec))
+        await this.#access?.sync(name, [], false)
+      } catch (error) {
+        throw new AgentError(
+          `${name} was removed, but its DNS records or Access application could not be deleted`,
+          500,
+          message(error),
+        )
+      }
       if (purge && this.#databases) {
         try {
           await this.#databases.purge(name)

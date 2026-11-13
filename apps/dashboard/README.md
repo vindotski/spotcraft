@@ -6,15 +6,15 @@ VictoriaMetrics. It has no database: the agent's files are the app list.
 
 ## Screens
 
-| Path                | What                                                                                                      |
-| ------------------- | --------------------------------------------------------------------------------------------------------- |
-| `/login`            | password login (5 failures per address in 15 minutes locks it out)                                        |
-| `/`                 | apps: status, domain, image:tag, 24-hour uptime                                                           |
-| `/apps/new`         | add an app: name, image, tag (Docker Hub suggestions), domain, port, limits, env, database                |
-| `/apps/:name`       | status, reachability, uptime, CPU, memory, response time, settings, last 200 logs; Edit, Redeploy, Remove |
-| `/apps/:name/users` | an app's users (guests and registered), newest first; delete one with a confirmation                      |
-| `/apps/:name/edit`  | change settings and deploy                                                                                |
-| `/server`           | apps server CPU, memory, disk, load, uptime                                                               |
+| Path                | What                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/login`            | password login (5 failures per address in 15 minutes locks it out)                                              |
+| `/`                 | apps: status, address, image:tag, 24-hour uptime                                                                |
+| `/apps/new`         | add an app: name, image, tag (Docker Hub suggestions), custom domain, port, limits, env, database, sign-in      |
+| `/apps/:name`       | status, reachability, uptime, CPU, memory, response time, settings, domain status, logs; Edit, Redeploy, Remove |
+| `/apps/:name/users` | an app's users (guests and registered), newest first; delete one with a confirmation                            |
+| `/apps/:name/edit`  | change settings and deploy                                                                                      |
+| `/server`           | apps server CPU, memory, disk, load, uptime                                                                     |
 
 **Database** gives the app its own Postgres database on the apps server, as `DATABASE_URL`
 ([ADR 0015](../../docs/decisions/0015-shared-postgres.md)). The form refuses an own

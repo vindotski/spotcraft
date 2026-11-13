@@ -15,8 +15,13 @@ It is not a PaaS: there is no build step, no multi-tenancy, and no database to l
 - **Deploys from a form.** Image, tag (with suggestions from Docker Hub), domain, port, limits
   and environment variables. Spotcraft pulls the image, waits until the app is healthy, then
   switches traffic. If anything fails, the previous version keeps running.
-- **HTTPS without thinking about it.** Caddy gets and renews Let's Encrypt certificates and
-  redirects `www.` for root domains.
+- **An address for every app.** With an apps domain, every app is served at
+  `<name>.<apps domain>` the moment it's deployed. A custom domain is one CNAME away, and
+  `www.` redirects for root domains. Caddy gets and renews the certificates.
+- **Optionally behind Cloudflare.** An OpenTofu module puts both servers behind Cloudflare
+  Tunnels, so ports 80 and 443 stay closed, and adds TLS, WAF and rate-limit settings and
+  Cloudflare Access for the dashboard. The agent then sets up custom domains' DNS itself, and any
+  app can require a sign-in.
 - **Monitoring built in.** Uptime and response time from outside, CPU and memory per app, host
   CPU, memory and disk, and each app's logs, in the dashboard.
 - **Hardened by default.** Apps run without Linux capabilities, read-only, with limits. See the
@@ -81,6 +86,7 @@ is defined in [ADR 0019](docs/decisions/0019-one-version-with-npm.md); changes a
 | `infra/apps-server`      | compose file and Caddyfile for the apps server        |
 | `infra/ops-server`       | compose file, Caddyfile and scrape config for the ops |
 | `infra/hetzner`          | optional OpenTofu module for Hetzner Cloud            |
+| `infra/cloudflare`       | optional OpenTofu module: tunnels, DNS, WAF, Access   |
 | `infra/remote-deploy.sh` | what the Deploy workflow runs on each server          |
 | `docs`                   | security model and decision records                   |
 
