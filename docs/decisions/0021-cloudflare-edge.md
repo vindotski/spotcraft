@@ -45,7 +45,12 @@ Not every owner uses Cloudflare, so it must stay optional.
   the dashboard's login, bot switches (off by default) and Access in front of the dashboard.
   Zones are looked up, never created, so records made by hand survive. Cloudflare's free managed
   WAF rules are on by default and left alone. `route_dns = false` builds everything but leaves
-  the records alone, so an existing instance can move without downtime.
+  the records alone, so an existing instance can prepare everything first and keep the switch
+  itself to a few minutes' outage. It can't be zero: behind the tunnel, Caddy serves plain
+  HTTP to `cloudflared` only, so the public records stop working once Spotcraft switches modes.
+- **Every app follows a mode change.** When the agent starts, it rewrites every app's Caddy site
+  for the current `EDGE` and `APPS_DOMAIN` and reloads Caddy, so switching modes doesn't wait for
+  each app's next deploy.
 - **Custom domains are set up by the agent through the Cloudflare API**, because the agent
   already deploys apps one at a time and rolls back:
   - A domain whose zone is in the same Cloudflare account gets a proxied CNAME to the apps

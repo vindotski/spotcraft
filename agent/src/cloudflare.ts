@@ -18,6 +18,8 @@ export interface DnsRecord {
   name: string
   content: string
   proxied?: boolean
+  /** Seconds; 1 means automatic. */
+  ttl?: number
   comment?: string | null
 }
 
@@ -111,11 +113,14 @@ export class CloudflareApi {
   }
 
   createRecord(zoneId: string, record: Omit<DnsRecord, 'id'>): Promise<DnsRecord> {
-    return this.#call('POST', `/zones/${zoneId}/dns_records`, { ...record, ttl: 1 })
+    return this.#call('POST', `/zones/${zoneId}/dns_records`, { ...record, ttl: record.ttl ?? 1 })
   }
 
   updateRecord(zoneId: string, id: string, record: Omit<DnsRecord, 'id'>): Promise<DnsRecord> {
-    return this.#call('PATCH', `/zones/${zoneId}/dns_records/${id}`, { ...record, ttl: 1 })
+    return this.#call('PATCH', `/zones/${zoneId}/dns_records/${id}`, {
+      ...record,
+      ttl: record.ttl ?? 1,
+    })
   }
 
   async deleteRecord(zoneId: string, id: string): Promise<void> {

@@ -76,16 +76,25 @@ private, and keep a copy somewhere safe.
 
 ### Moving an existing instance
 
-Keep traffic flowing while you switch:
+The switch takes a short, planned outage. Behind a tunnel, Caddy serves plain HTTP to
+`cloudflared` only. So from the moment Spotcraft is deployed with `EDGE=cloudflare` until
+visitors' DNS points at the tunnels, the old A and AAAA records lead nowhere. Keep that window
+small:
 
 1. Apply with `route_dns = false`. This creates the tunnels and settings but changes no records,
-   and Access only takes effect on proxied records.
-2. Deploy with the tunnel tokens so `cloudflared` runs on both servers.
-3. Apply with `route_dns = true`. The wildcard and the dashboard now go through the tunnels.
-4. Close ports 80 and 443 in `infra/hetzner`.
+   and Access only takes effect on proxied records. Nothing changes for visitors yet.
+2. A day before, lower the TTL of the existing A and AAAA records (the dashboard's, the
+   wildcard's, and each app's domain) to 60 seconds, so resolvers forget them quickly.
+3. Deploy with `EDGE=cloudflare` and the tunnel tokens. The outage starts here.
+4. Right away, apply with `route_dns = true`. The wildcard and the dashboard now go through the
+   tunnels. Then redeploy each app that has a custom domain with **Take over existing DNS
+   records** ticked (or point its record at the tunnel by hand). The outage ends as resolvers
+   pick up the new records, usually within a few minutes.
+5. Close ports 80 and 443 with `edge = "cloudflare"` in `infra/hetzner`.
 
-To go back, re-create the A and AAAA records, apply `edge = "direct"` in `infra/hetzner`, and
-deploy without `EDGE`.
+Going back is the same in reverse, with the same short outage: re-create the A and AAAA records,
+deploy without `EDGE`, and apply `edge = "direct"` in `infra/hetzner`. After either switch, the
+agent rewrites every app's Caddy site for the new mode when it starts.
 
 | Variable                  | Default                | Meaning                                                |
 | ------------------------- | ---------------------- | ------------------------------------------------------ |

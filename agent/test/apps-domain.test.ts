@@ -71,6 +71,47 @@ describe('apps domain (ADR 0021)', () => {
     assert.match(text, /^http:\/\/www\.tagtape\.app \{$/m)
   })
 
+  it('rewrites every site when the edge changes, and reloads Caddy once', async () => {
+    start({ appsDomain: 'spotcraft.dev', edge: 'direct' })
+    await put('tagtape', { ...spec, domain: 'tagtape.app' })
+    await put('blog', spec)
+    const reloads: string[][] = []
+    const counting: Runner = async (_file, args) => {
+      if (args.includes('reload')) reloads.push(args)
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    const behindTunnel = new Apps(new Store(dir), counting, 'caddy', undefined, {
+      appsDomain: 'spotcraft.dev',
+      edge: 'cloudflare',
+    })
+    assert.deepEqual(await behindTunnel.refreshSites(), ['blog', 'tagtape'])
+    assert.match(
+      await site('tagtape'),
+      /^http:\/\/tagtape\.spotcraft\.dev, http:\/\/tagtape\.app \{$/m,
+    )
+    assert.match(await site('blog'), /^http:\/\/blog\.spotcraft\.dev \{$/m)
+    assert.equal(reloads.length, 1)
+    assert.deepEqual(await behindTunnel.refreshSites(), [], 'nothing left to change')
+    assert.equal(reloads.length, 1, 'no reload without a change')
+  })
+
+  it('retries the reload after Caddy failed, even with nothing new to write', async () => {
+    start({ appsDomain: 'spotcraft.dev', edge: 'direct' })
+    await put('tagtape', spec)
+    let caddyUp = false
+    const flaky: Runner = async (_file, args) =>
+      args.includes('reload') && !caddyUp
+        ? { code: 1, stdout: '', stderr: 'caddy starting' }
+        : { code: 0, stdout: '', stderr: '' }
+    const apps = new Apps(new Store(dir), flaky, 'caddy', undefined, {
+      appsDomain: 'spotcraft.dev',
+      edge: 'cloudflare',
+    })
+    await assert.rejects(apps.refreshSites())
+    caddyUp = true
+    assert.deepEqual(await apps.refreshSites(), [], 'already written')
+  })
+
   it('requires a domain when there is no apps domain', async () => {
     start({ edge: 'direct' })
     assert.equal((await put('tagtape', spec)).statusCode, 400)

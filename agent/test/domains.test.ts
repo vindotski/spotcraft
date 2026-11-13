@@ -34,6 +34,8 @@ function fakeCloudflare(zoneNames: string[]) {
   const calls: string[] = []
   let nextId = 1
   let down = false
+  // Fails the first call matching this, then behaves again.
+  let failOnce: ((method: string, path: string) => boolean) | undefined
   const ok = (result: unknown) =>
     new Response(JSON.stringify({ success: true, errors: [], result }), { status: 200 })
 
@@ -42,7 +44,10 @@ function fakeCloudflare(zoneNames: string[]) {
     const method = init?.method ?? 'GET'
     const path = url.pathname.replace('/client/v4', '')
     calls.push(`${method} ${path}`)
-    if (down) return new Response(JSON.stringify({ success: false, errors: [{ message: 'nope' }] }))
+    if (down || failOnce?.(method, path)) {
+      failOnce = undefined
+      return new Response(JSON.stringify({ success: false, errors: [{ message: 'nope' }] }))
+    }
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     if (path === '/zones') {
       assert.equal(url.searchParams.get('account.id'), ACCOUNT)
@@ -120,10 +125,24 @@ function fakeCloudflare(zoneNames: string[]) {
     return full
   }
   const at = (name: string) => [...records.values()].filter((r) => r.name === name)
-  return { fetchImpl, records, customs, accessApps, calls, add, at, fail: () => (down = true) }
+  return {
+    fetchImpl,
+    records,
+    customs,
+    accessApps,
+    calls,
+    add,
+    at,
+    fail: () => (down = true),
+    failOnceOn: (match: (method: string, path: string) => boolean) => (failOnce = match),
+  }
 }
 
-const run: Runner = async () => ({ code: 0, stdout: '', stderr: '' })
+let failUp = false
+const run: Runner = async (_file, args) =>
+  failUp && args.includes('--wait')
+    ? { code: 1, stdout: '', stderr: 'unhealthy' }
+    : { code: 0, stdout: '', stderr: '' }
 
 describe('custom domains through Cloudflare (ADR 0021)', () => {
   let dir: string
@@ -143,6 +162,7 @@ describe('custom domains through Cloudflare (ADR 0021)', () => {
       token: TOKEN,
       apps: new Apps(new Store(dir), run, 'caddy', undefined, settings, { domains }),
     })
+    failUp = false
   })
   afterEach(async () => {
     await app.close()
@@ -240,6 +260,63 @@ describe('custom domains through Cloudflare (ADR 0021)', () => {
     const removed = await app.inject({ method: 'DELETE', url: '/apps/tagtape', headers: auth })
     assert.equal(removed.statusCode, 204)
     assert.equal(cf.records.size, 0)
+  })
+
+  it('puts taken-over records back when the deploy then fails', async () => {
+    cf.add('tagtape.app', {
+      type: 'A',
+      name: 'tagtape.app',
+      content: '203.0.113.7',
+      proxied: false,
+      ttl: 300,
+    })
+    cf.add('tagtape.app', {
+      type: 'AAAA',
+      name: 'www.tagtape.app',
+      content: '2001:db8::7',
+      proxied: false,
+    })
+    failUp = true
+    const res = await put('tagtape', { ...spec, domain: 'tagtape.app' }, '?takeOver=true')
+    assert.equal(res.statusCode, 502)
+    const apex = cf.at('tagtape.app')
+    assert.deepEqual(
+      apex.map((r) => [r.type, r.content, r.proxied, r.ttl]),
+      [['A', '203.0.113.7', false, 300]],
+      'the old A record is back, with its TTL; no CNAME is left',
+    )
+    assert.deepEqual(
+      cf.at('www.tagtape.app').map((r) => [r.type, r.content]),
+      [['AAAA', '2001:db8::7']],
+    )
+  })
+
+  it('undoes a half-done attach when Cloudflare fails partway', async () => {
+    cf.add('tagtape.app', {
+      type: 'A',
+      name: 'tagtape.app',
+      content: '203.0.113.7',
+      proxied: false,
+    })
+    // The apex is switched first; creating the www. record then fails.
+    let creates = 0
+    cf.failOnceOn(
+      (method, path) => method === 'POST' && path.endsWith('/dns_records') && ++creates === 2,
+    )
+    const res = await put('tagtape', { ...spec, domain: 'tagtape.app' }, '?takeOver=true')
+    assert.equal(res.statusCode, 502)
+    assert.deepEqual(
+      cf.at('tagtape.app').map((r) => [r.type, r.content]),
+      [['A', '203.0.113.7']],
+    )
+    assert.equal(cf.at('www.tagtape.app').length, 0)
+  })
+
+  it("refuses a domain that is another app's www. redirect", async () => {
+    await put('tagtape', { ...spec, domain: 'tagtape.app' })
+    const res = await put('other', { ...spec, domain: 'www.tagtape.app' })
+    assert.equal(res.statusCode, 409)
+    assert.match(res.json().error, /www\.tagtape\.app is used by tagtape/)
   })
 
   it('leaves the app untouched when Cloudflare fails', async () => {

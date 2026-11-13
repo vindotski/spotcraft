@@ -18,6 +18,19 @@ const ROUTING_TYPES = new Set(['A', 'AAAA', 'CNAME'])
 /** Cloudflare's statuses as words: `pending_validation` → `pending validation`. */
 const readable = (status: string) => status.replaceAll('_', ' ')
 
+/** Puts back what `attach` changed. */
+export type Undo = () => Promise<void>
+
+/** A record's own fields, to create or update it back as it was. */
+const original = (record: DnsRecord): Omit<DnsRecord, 'id'> => ({
+  type: record.type,
+  name: record.name,
+  content: record.content,
+  proxied: record.proxied,
+  ttl: record.ttl,
+  comment: record.comment ?? null,
+})
+
 /** Spotcraft marks the records it makes, so it never touches anyone else's. */
 export const recordComment = (name: string) => `spotcraft:${name}`
 
@@ -53,8 +66,12 @@ export class Domains {
   /**
    * Points every host at the app. Checks all of them before changing any: a host with records
    * Spotcraft didn't make is refused unless `takeOver`, which replaces them.
+   *
+   * Returns an undo that puts back exactly what this call changed, records it replaced
+   * included, for when the deploy fails afterwards. If attaching itself fails partway, it
+   * undoes its own changes before throwing.
    */
-  async attach(name: string, hosts: string[], { takeOver = false } = {}): Promise<void> {
+  async attach(name: string, hosts: string[], { takeOver = false } = {}): Promise<Undo> {
     const plans = await Promise.all(hosts.map((host) => this.#plan(host)))
     if (!takeOver) {
       for (const plan of plans) {
@@ -67,15 +84,33 @@ export class Domains {
         }
       }
     }
-    for (const plan of plans) {
-      if (plan.mode === 'zone') await this.#attachZone(name, plan)
-      else if (!(await this.#api.customHostname(this.#appsZoneId, plan.host))) {
-        await this.#api.createCustomHostname(this.#appsZoneId, plan.host)
-      }
+    // Every change pushes the step that reverses it; undo runs them newest first.
+    const journal: Array<() => Promise<unknown>> = []
+    const undo: Undo = async () => {
+      for (const step of journal.splice(0).reverse()) await step().catch(() => {})
     }
+    try {
+      for (const plan of plans) {
+        if (plan.mode === 'zone') {
+          await this.#attachZone(name, plan, journal)
+        } else if (!(await this.#api.customHostname(this.#appsZoneId, plan.host))) {
+          const created = await this.#api.createCustomHostname(this.#appsZoneId, plan.host)
+          journal.push(() => this.#api.deleteCustomHostname(this.#appsZoneId, created.id))
+        }
+      }
+    } catch (error) {
+      await undo()
+      throw error
+    }
+    return undo
   }
 
-  async #attachZone(name: string, plan: Extract<Plan, { mode: 'zone' }>) {
+  async #attachZone(
+    name: string,
+    plan: Extract<Plan, { mode: 'zone' }>,
+    journal: Array<() => Promise<unknown>>,
+  ) {
+    const { zoneId } = plan
     const wanted = {
       type: 'CNAME',
       name: plan.host,
@@ -83,22 +118,31 @@ export class Domains {
       proxied: true,
       comment: recordComment(name),
     }
+    const remove = async (record: DnsRecord) => {
+      await this.#api.deleteRecord(zoneId, record.id)
+      journal.push(() => this.#api.createRecord(zoneId, original(record)))
+    }
+    const create = async () => {
+      const created = await this.#api.createRecord(zoneId, wanted)
+      journal.push(() => this.#api.deleteRecord(zoneId, created.id))
+    }
     // A CNAME can't share its name with other records: keep at most one, replace the rest.
     const [keep, ...rest] = [...plan.records].sort(
       (a, b) => Number(b.type === 'CNAME') - Number(a.type === 'CNAME'),
     )
-    for (const record of rest) await this.#api.deleteRecord(plan.zoneId, record.id)
+    for (const record of rest) await remove(record)
     if (!keep) {
-      await this.#api.createRecord(plan.zoneId, wanted)
+      await create()
     } else if (keep.type !== 'CNAME') {
-      await this.#api.deleteRecord(plan.zoneId, keep.id)
-      await this.#api.createRecord(plan.zoneId, wanted)
+      await remove(keep)
+      await create()
     } else if (
       keep.content !== wanted.content ||
       !keep.proxied ||
       keep.comment !== wanted.comment
     ) {
-      await this.#api.updateRecord(plan.zoneId, keep.id, wanted)
+      await this.#api.updateRecord(zoneId, keep.id, wanted)
+      journal.push(() => this.#api.updateRecord(zoneId, keep.id, original(keep)))
     }
   }
 

@@ -72,7 +72,9 @@ also gets `www.`.
   lists. Cloudflare then verifies the domain and issues its certificate.
 
 DNS is set up before anything else in a deploy, and every host is checked before any is
-changed. If the deploy then fails, hosts it added are removed again. When the domain changes,
+changed. If the deploy then fails, or Cloudflare fails partway, DNS is put back exactly as it
+was, including records a take-over replaced. No host may belong to two apps, including the
+`www.` a root domain redirects. When the domain changes,
 the old one's records go once the new version runs. Removing the app removes its records and
 custom hostnames. Without these settings, `GET /apps/:name/domain` only says which records to
 create by hand.
@@ -84,6 +86,10 @@ version takes traffic. If the deploy fails, the previous protection is put back,
 the app removes the Access application. Without the policy, `protected: true` returns 409.
 
 ## Deploying
+
+Each app's Caddy site depends on `EDGE` and `APPS_DOMAIN`. When the agent starts, it rewrites
+any site that doesn't match them and reloads Caddy (retrying while Caddy starts), so switching
+modes applies to every app at once.
 
 `PUT` writes the files, then runs `docker compose pull`, `docker compose up -d --wait`
 (waits up to 120 s for the container to run, and to be healthy if the image has a healthcheck)

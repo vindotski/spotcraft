@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import Fastify, { type FastifyServerOptions } from 'fastify'
 import type { AppBody } from './app-spec.ts'
-import { appBodySchema, hostnames, nameParamsSchema, RESERVED_NAMES } from './app-spec.ts'
+import { appBodySchema, nameParamsSchema, RESERVED_NAMES, servedHosts } from './app-spec.ts'
 import { AgentError, type Apps } from './apps.ts'
 
 export interface BuildOptions {
@@ -124,11 +124,12 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
           .code(400)
           .send({ error: 'A domain is required: this server has no APPS_DOMAIN' })
       }
-      // No host may belong to two apps: a custom domain can't be another app's default host.
-      const wanted = hostnames({ name, domain: request.body.domain }, appsDomain)
+      // No host may belong to two apps: a custom domain can't be another app's default host,
+      // nor the `www.` another app's root domain redirects.
+      const wanted = servedHosts({ name, domain: request.body.domain }, appsDomain)
       for (const other of await apps.list()) {
         if (other.name === name) continue
-        const clash = hostnames(other, appsDomain).find((host) => wanted.includes(host))
+        const clash = servedHosts(other, appsDomain).find((host) => wanted.includes(host))
         if (clash) return reply.code(409).send({ error: `${clash} is used by ${other.name}` })
       }
       return apps.deploy(

@@ -7,6 +7,7 @@ import {
   type DomainStatus,
   defaultHost,
   hostnames,
+  servedHosts,
 } from './app-spec.ts'
 import { CloudflareError } from './cloudflare.ts'
 import { DomainConflict, type Domains } from './domains.ts'
@@ -106,6 +107,7 @@ export class Apps {
   readonly settings: AgentSettings
   readonly #domains: Domains | undefined
   readonly #access: AccessApps | undefined
+  #sitesStale = false
   #queue: Promise<unknown> = Promise.resolve()
 
   /** Without `databases`, apps can't ask for a database (the server has no Postgres). */
@@ -225,30 +227,33 @@ export class Apps {
       const newHosts = customHosts(spec)
       // DNS first, then the database: if either can't be prepared, the app hasn't changed yet.
       const domains = this.#domains
-      if (domains) {
-        await this.#cloudflare(`set up DNS for ${spec.domain}`, () =>
-          domains.attach(spec.name, newHosts, { takeOver }),
-        )
-      }
-      // Protection goes on before the new version takes traffic.
+      const undoDns = domains
+        ? await this.#cloudflare(`set up DNS for ${spec.domain}`, () =>
+            domains.attach(spec.name, newHosts, { takeOver }),
+          )
+        : undefined
       const access = this.#access
-      if (access) {
-        await this.#cloudflare('set up Cloudflare Access', () =>
-          access.sync(spec.name, this.#hostnames(spec), Boolean(spec.protected)),
-        )
-      }
-      const added = newHosts.filter((host) => !oldHosts.includes(host))
       let status: AppStatus
       try {
+        // Protection goes on before the new version takes traffic.
+        if (access) {
+          await this.#cloudflare('set up Cloudflare Access', () =>
+            access.sync(
+              spec.name,
+              servedHosts(spec, this.settings.appsDomain),
+              Boolean(spec.protected),
+            ),
+          )
+        }
         status = await this.#rollOut(spec)
       } catch (error) {
-        // Hosts this deploy added point nowhere now; take them back, and put the previous
-        // protection back (best effort).
-        await this.#domains?.detach(spec.name, added).catch(() => {})
+        // Put DNS back exactly as it was (records a take-over replaced included), and the
+        // previous protection (best effort).
+        await undoDns?.()
         await access
           ?.sync(
             spec.name,
-            previousSpec ? this.#hostnames(previousSpec) : [],
+            previousSpec ? servedHosts(previousSpec, this.settings.appsDomain) : [],
             Boolean(previousSpec?.protected),
           )
           .catch(() => {})
@@ -261,11 +266,6 @@ export class Apps {
       })
       return status
     })
-  }
-
-  #hostnames(spec: AppSpec): string[] {
-    const hosts = hostnames(spec, this.settings.appsDomain)
-    return [...hosts, ...customHosts(spec).filter((host) => !hosts.includes(host))]
   }
 
   async #rollOut(spec: AppSpec): Promise<AppStatus> {
@@ -329,6 +329,35 @@ export class Apps {
         ],
       })),
     }
+  }
+
+  /**
+   * Rewrites every app's Caddy site for the current settings and reloads Caddy if any
+   * changed. Sites depend on EDGE and APPS_DOMAIN, so after either changes (a redeploy of
+   * Spotcraft), every app must follow, not only the next one deployed. Returns the apps whose
+   * site changed.
+   */
+  refreshSites(): Promise<string[]> {
+    return this.#exclusive(async () => {
+      const changed: string[] = []
+      for (const spec of await this.#store.list()) {
+        const files = await this.#store.read(spec.name)
+        const site = renderSite(spec, this.settings)
+        if (!files || files.site === site) continue
+        await this.#store.write(spec.name, { ...files, site })
+        changed.push(spec.name)
+      }
+      // Stays set until a reload succeeds, so a retry still reloads files written before.
+      if (changed.length > 0) this.#sitesStale = true
+      if (this.#sitesStale) {
+        const reload = await this.#reloadCaddy()
+        if (reload.code !== 0) {
+          throw new AgentError('Caddy rejected the rewritten sites', 500, tail(reload))
+        }
+        this.#sitesStale = false
+      }
+      return changed
+    })
   }
 
   /** Prepares the app's database with its stored password (generated the first time). */

@@ -47,6 +47,24 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 
 await app.listen({ host: config.host, port: config.port })
 
+// Sites follow EDGE and APPS_DOMAIN: after either changed, rewrite every app's site. Caddy
+// may still be starting (both start in the same deploy), so a failed reload is retried.
+for (let attempt = 1; attempt <= 24; attempt++) {
+  try {
+    const changed = await apps.refreshSites()
+    if (changed.length > 0)
+      app.log.info({ changed }, 'app sites rewritten for the current settings')
+    break
+  } catch (error) {
+    if (attempt === 24) {
+      app.log.error({ err: error }, 'gave up rewriting app sites')
+      break
+    }
+    app.log.warn({ attempt }, 'could not reload Caddy with rewritten sites; retrying')
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+  }
+}
+
 // After an upgrade, bring every app database up to date. Postgres may still be starting
 // (both start in the same deploy), so failures are retried for a few minutes.
 if (databases) {

@@ -149,8 +149,8 @@ throughout; they are only restarted when a release says so.
 To update an app, edit it in the dashboard and pick the new tag. To roll an app back, pick the
 old tag.
 
-To move a running instance behind Cloudflare without downtime, follow **Moving an existing
-instance** in the [`infra/cloudflare` README](../infra/cloudflare/README.md).
+To move a running instance behind Cloudflare with only a few minutes' outage, follow **Moving
+an existing instance** in the [`infra/cloudflare` README](../infra/cloudflare/README.md).
 
 ## Next
 

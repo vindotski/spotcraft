@@ -105,6 +105,15 @@ export function customHosts(app: Pick<AppSpec, 'domain'>): string[] {
   return app.domain.split('.').length === 2 ? [app.domain, `www.${app.domain}`] : [app.domain]
 }
 
+/**
+ * Every host Caddy, DNS and Access handle for the app: its hostnames plus `www.` of a root
+ * custom domain (which redirects). No two apps may share any of them.
+ */
+export function servedHosts(app: Pick<AppSpec, 'name' | 'domain'>, appsDomain?: string): string[] {
+  const hosts = hostnames(app, appsDomain)
+  return [...hosts, ...customHosts(app).filter((host) => !hosts.includes(host))]
+}
+
 /** A DNS record someone has to create, as the dashboard shows it. */
 export interface DnsInstruction {
   type: 'CNAME' | 'TXT' | 'A/AAAA'
