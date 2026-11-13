@@ -51,7 +51,7 @@ export class Store {
   async read(name: string): Promise<AppFiles | undefined> {
     try {
       const [spec, compose, site] = await Promise.all([
-        readFile(join(this.appDir(name), 'app.json'), 'utf8'),
+        readFile(this.#specPath(name), 'utf8'),
         readFile(this.composePath(name), 'utf8'),
         readFile(this.sitePath(name), 'utf8'),
       ])
@@ -65,12 +65,27 @@ export class Store {
   async write(name: string, files: AppFiles) {
     await mkdir(this.appDir(name), { recursive: true })
     await mkdir(join(this.dataDir, 'sites'), { recursive: true })
-    await writeFile(join(this.appDir(name), 'app.json'), files.spec)
-    // It carries DATABASE_URL, with the app's database password: the agent's user only, like
-    // secrets.json (chmod as well: the mode only applies when the file is created).
-    await writeFile(this.composePath(name), files.compose, { mode: 0o600 })
-    await chmod(this.composePath(name), 0o600)
-    await writeFile(this.sitePath(name), files.site)
+    // app.json carries the app's env (AUTH_SECRET and the like) and compose.yaml also
+    // DATABASE_URL, with the app's database password: the agent's user only, like secrets.json
+    // (chmod as well: the mode only applies when the file is created).
+    for (const [path, content] of [
+      [this.#specPath(name), files.spec],
+      [this.composePath(name), files.compose],
+    ] as const) {
+      await writeFile(path, content, { mode: 0o600 })
+      await chmod(path, 0o600)
+    }
+    await this.writeSite(name, files.site)
+  }
+
+  /** Only the Caddy site, e.g. once a new slot is healthy and traffic can move to it. */
+  async writeSite(name: string, site: string) {
+    await mkdir(join(this.dataDir, 'sites'), { recursive: true })
+    await writeFile(this.sitePath(name), site)
+  }
+
+  #specPath(name: string) {
+    return join(this.appDir(name), 'app.json')
   }
 
   #secretsPath(name: string) {
@@ -86,11 +101,13 @@ export class Store {
     }
   }
 
-  /** Makes the app's compose file the agent's alone, as written before that was the rule. */
-  async lockDownCompose(name: string) {
-    await chmod(this.composePath(name), 0o600).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error
-    })
+  /** Makes the app's app.json and compose file the agent's alone, as older agents didn't. */
+  async lockDown(name: string) {
+    for (const path of [this.#specPath(name), this.composePath(name)]) {
+      await chmod(path, 0o600).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error
+      })
+    }
   }
 
   /** Readable by the agent's user only. */

@@ -1,43 +1,57 @@
 import { type AgentSettings, type AppSpec, hostnames, projectName } from './app-spec.ts'
 
-/** Caddy reaches each app by this alias on the shared edge network. */
-export const upstreamAlias = (name: string) => `app-${name}`
+/**
+ * Caddy reaches an app's container by this alias on the shared edge network: `app-<service>`,
+ * e.g. `app-blog-green` for the green slot of `blog`. (An app deployed before slots has the
+ * service `blog`, so `app-blog`.)
+ */
+export const upstreamAlias = (service: string) => `app-${service}`
 
 /** Compose interpolates `$VAR` even in values; `$$` is a literal dollar sign. */
 const escapeCompose = (value: string) => value.replaceAll('$', '$$$$')
 
 /**
- * The app's compose file. Written as JSON (valid YAML), so values never need YAML escaping.
- * Hardened by default: no capabilities, no privilege escalation, resource limits.
+ * The app's compose file, with one service: the slot being deployed (ADR 0028). The other
+ * slot's container, if any, keeps running until traffic has moved. Written as JSON (valid YAML),
+ * so values never need YAML escaping. Hardened by default: no capabilities, no privilege
+ * escalation, resource limits.
  */
-export function renderCompose(app: AppSpec, databaseUrl?: string): string {
+export function renderCompose(app: AppSpec, service: string, databaseUrl?: string): string {
   const all = databaseUrl ? { ...app.env, DATABASE_URL: databaseUrl } : app.env
   const env = Object.fromEntries(
     Object.entries(all).map(([key, value]) => [key, escapeCompose(value)]),
   )
-  const service: Record<string, unknown> = {
+  const definition: Record<string, unknown> = {
     image: `${app.image}:${app.tag}`,
     restart: 'unless-stopped',
     environment: env,
-    networks: { edge: { aliases: [upstreamAlias(app.name)] } },
+    networks: { edge: { aliases: [upstreamAlias(service)] } },
     cap_drop: ['ALL'],
     security_opt: ['no-new-privileges:true'],
     mem_limit: app.memory,
     cpus: app.cpus,
     pids_limit: 256,
+    // Docker sends SIGTERM and waits this long before killing it: time for the old slot to
+    // finish the requests it already has once traffic has moved.
     stop_grace_period: '30s',
     logging: { driver: 'json-file', options: { 'max-size': '10m', 'max-file': '3' } },
   }
   if (app.readOnly) {
-    service.read_only = true
-    service.tmpfs = ['/tmp:size=64m,noexec,nosuid,nodev']
+    definition.read_only = true
+    definition.tmpfs = ['/tmp:size=64m,noexec,nosuid,nodev']
   }
   const compose = {
     name: projectName(app.name),
-    services: { [app.name]: service },
+    services: { [service]: definition },
     networks: { edge: { name: 'spotcraft-edge', external: true } },
   }
   return `${JSON.stringify(compose, null, 2)}\n`
+}
+
+/** The service a compose file written by `renderCompose` runs: the app's live slot. */
+export function composeService(compose: string): string | undefined {
+  const services = (JSON.parse(compose) as { services?: Record<string, unknown> }).services
+  return services ? Object.keys(services)[0] : undefined
 }
 
 /**
@@ -49,10 +63,11 @@ export const wantsWwwRedirect = (domain: string) => domain.split('.').length ===
 
 /**
  * The app's Caddy site block, imported by the server's main Caddyfile. It answers on the
- * app's default host and its custom domain. Behind Cloudflare (`edge: cloudflare`) the sites are
- * plain HTTP: Cloudflare terminates TLS and the tunnel brings requests to Caddy on port 80.
+ * app's default host and its custom domain, and proxies to `service`, the app's live slot.
+ * Behind Cloudflare (`edge: cloudflare`) the sites are plain HTTP: Cloudflare terminates TLS
+ * and the tunnel brings requests to Caddy on port 80.
  */
-export function renderSite(app: AppSpec, settings: AgentSettings): string {
+export function renderSite(app: AppSpec, settings: AgentSettings, service: string): string {
   const scheme = settings.edge === 'cloudflare' ? 'http://' : ''
   const hosts = hostnames(app, settings.appsDomain)
   // E.g. APPS_DOMAIN was cleared and the app has no domain of its own: no site, rather than a
@@ -77,7 +92,7 @@ ${hosts.map((host) => scheme + host).join(', ')} {
 \t\tReferrer-Policy "strict-origin-when-cross-origin"
 \t\t-Server
 \t}
-\treverse_proxy ${upstreamAlias(app.name)}:${app.port} {
+\treverse_proxy ${upstreamAlias(service)}:${app.port} {
 \t\t# The visitor's address (Cloudflare's CF-Connecting-IP when behind the tunnel), not a hop's.
 \t\theader_up X-Forwarded-For {client_ip}
 \t}
