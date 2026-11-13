@@ -24,7 +24,9 @@ describe('same as the server', () => {
     const ci = await repoFile('.github/workflows/ci.yml')
     const images = (text: string) => [...text.matchAll(/image: (postgres:\S+)/g)].map((m) => m[1])
     assert.deepEqual(images(compose), [POSTGRES_IMAGE])
-    assert.deepEqual(images(ci), [POSTGRES_IMAGE])
+    // CI has a database for each job that runs the kit's tests: every one must match.
+    assert.ok(images(ci).length > 0)
+    assert.deepEqual(new Set(images(ci)), new Set([POSTGRES_IMAGE]))
   })
 
   it('uses the login rules of the server', async () => {

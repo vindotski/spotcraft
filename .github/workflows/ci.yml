@@ -74,6 +74,8 @@ jobs:
             exit 1
           fi
       - run: pnpm check
+      # Shell scripts that run in CI or on the server (shellcheck comes with the runner image).
+      - run: shellcheck infra/remote-deploy.sh scripts/npm-publish.sh
       - run: pnpm check:versions
       - run: pnpm typecheck
       - run: pnpm test
@@ -88,6 +90,40 @@ jobs:
             docker run --rm -v "$PWD/infra:/infra" -w "/infra/$module" -e TF_DATA_DIR=/tmp/tf --entrypoint sh "$TOFU" \
               -c 'tofu fmt -check -diff && tofu init -backend=false -input=false -lockfile=readonly >/dev/null && tofu validate'
           done
+
+  # The npm packages promise Node 24 (`engines`), while everything else runs on .nvmrc's Node:
+  # their tests run on 24 too.
+  node24:
+    name: kit and CLI on Node 24
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The kit's database tests, like verify's.
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+        env:
+          POSTGRES_PASSWORD: ci-only-superuser
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KIT_TEST_POSTGRES_URL: postgres://postgres:ci-only-superuser@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      # By folder: `spotcraft` is also the workspace root's name, and would run every package.
+      - run: pnpm install --frozen-lockfile --filter ./packages/kit... --filter ./packages/cli...
+      - run: pnpm --filter ./packages/kit --filter ./packages/cli test
 
   # Needs the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN to push.
   images:
@@ -187,7 +223,8 @@ jobs:
   # trusted publisher can be linked; delete it after.
   npm:
     name: npm (spotcraft)
-    needs: [verify, images]
+    # node24: the CLI promises Node 24 (engines) and isn't published unless it works there.
+    needs: [verify, images, node24]
     # Only the original repository publishes these names; forks of the template skip it.
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
     runs-on: ubuntu-24.04
@@ -233,7 +270,8 @@ jobs:
   # kit-v* tags only: publishes @spotcraft/kit alone, at its own version (ADR 0027).
   kit:
     name: npm (@spotcraft/kit)
-    needs: verify
+    # node24: the kit promises Node 24 (engines) and isn't published unless it works there.
+    needs: [verify, node24]
     if: startsWith(github.ref, 'refs/tags/kit-v') && github.repository == 'vindotski/spotcraft'
     runs-on: ubuntu-24.04
     timeout-minutes: 15

@@ -71,7 +71,7 @@ With `EDGE=cloudflare`, `APPS_DOMAIN` and all four of `CLOUDFLARE_API_TOKEN`,
 agent logs a notice at startup. A root domain
 also gets `www.`.
 
-- **The domain's zone is in the account**: the agent creates a proxied CNAME to the apps tunnel,
+- **The domain's zone is in the account**: the agent creates a proxied CNAME to the server's tunnel,
   with the comment `spotcraft:<name>`. It refuses (409) if the host already has A, AAAA or CNAME
   records it didn't make, unless the app's `takeOver` setting is on (ADR 0022). Other records such as MX and
   TXT are never touched.
@@ -110,6 +110,8 @@ Changes run one at a time.
 
 A `www.` site redirecting to the custom domain is added only for root domains (two labels,
 e.g. `tagtape.app`); subdomains get none, so Caddy never requests certificates for unused names.
+A root domain under a two-part suffix (`example.co.uk`) counts as a subdomain here and gets no
+`www.`; point `www.` at the app yourself if you need it.
 Caddy passes the visitor's address to the app as `X-Forwarded-For`. With `EDGE=cloudflare`,
 site blocks are plain HTTP (`http://host`): Cloudflare terminates TLS and a tunnel delivers
 requests to Caddy.
@@ -174,7 +176,8 @@ Compose starts it with `working_dir: /app/agent` and `command: ["src/index.ts"]`
 Node 26 (no shell or package manager) plus the static Docker CLI and Compose plugin. It runs as uid 1000 and reaches Docker through the socket's group (`group_add`
 with `DOCKER_GID`); the Docker CLI keeps its config in `/tmp` so the root filesystem can be
 read-only. Mounting the Docker socket still makes the agent
-equivalent to root on the server; the private-network binding and the token protect it.
+equivalent to root on the server; the internal `control` network (only the dashboard is there),
+`AGENT_ALLOWED_IPS` and the token protect it.
 
 The workspace runs the kit's TypeScript source (the `spotcraft-source` export condition, set in the
 `dev` and `test` scripts and in `tsconfig.json`). The image ships the kit's built JavaScript,

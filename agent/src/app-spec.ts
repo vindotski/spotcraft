@@ -26,6 +26,12 @@ export interface AppSpec {
   takeOver?: boolean
 }
 
+/**
+ * The Compose project of an app (also its container name prefix). The dashboard finds an app's
+ * cAdvisor metrics by this label value.
+ */
+export const projectName = (name: string) => `spotcraft-app-${name}`
+
 // Names end up in container names, network aliases and file paths.
 export const NAME = '^[a-z][a-z0-9-]{0,30}[a-z0-9]$'
 // Docker Hub style repository, optionally with a registry host (e.g. ghcr.io/org/app).
