@@ -10,6 +10,10 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-13
+
+A fix for Log out behind Cloudflare Access. No upgrade steps: deploy `0.4.1`.
+
 ### Fixed
 
 - **Log out with Cloudflare Access** now lands on the Access sign-in. Before, the dashboard's
@@ -242,7 +246,8 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/vindotski/spotcraft/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/vindotski/spotcraft/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vindotski/spotcraft/compare/v0.1.0...v0.2.0
