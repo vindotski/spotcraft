@@ -345,12 +345,15 @@ export class Apps {
         if (files && files.site !== site) pending.push({ spec, files, site })
       }
       if (pending.length === 0) return []
-      // Protected apps' new hosts go behind Access before Caddy serves them.
+      // Protected apps' new hosts go behind Access before Caddy serves them, next to the old
+      // ones: whatever fails from here on (another app's Access update, Caddy's reload), every
+      // host that might be served stays protected. It narrows to the new hosts at the end.
       const access = this.#access
+      const protectedSpecs = pending.filter((p) => p.spec.protected).map((p) => p.spec)
       if (access) {
-        for (const { spec } of pending.filter((p) => p.spec.protected)) {
+        for (const spec of protectedSpecs) {
           await this.#cloudflare(`protect ${spec.name} with Cloudflare Access`, () =>
-            access.sync(spec.name, servedHosts(spec, this.settings.appsDomain), true),
+            access.extend(spec.name, servedHosts(spec, this.settings.appsDomain)),
           )
         }
       }
@@ -363,6 +366,15 @@ export class Apps {
         for (const { spec, files } of pending) await this.#store.write(spec.name, files)
         await this.#reloadCaddy()
         throw new AgentError('Caddy rejected the rewritten sites', 500, tail(reload))
+      }
+      // The old hosts are gone from Caddy now; protection can drop them (extra hosts would be
+      // harmless, so a failure here only leaves them listed).
+      if (access) {
+        for (const spec of protectedSpecs) {
+          await access
+            .sync(spec.name, servedHosts(spec, this.settings.appsDomain), true)
+            .catch(() => {})
+        }
       }
       return pending.map((p) => p.spec.name)
     })

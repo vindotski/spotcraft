@@ -420,6 +420,37 @@ describe('protected apps behind Cloudflare Access (ADR 0021)', () => {
     )
   })
 
+  it('keeps the old hosts protected when Caddy rejects the switch', async () => {
+    await put('tagtape', { ...spec, protected: true })
+    let caddyUp = false
+    const flaky: Runner = async (_file, args) =>
+      args.includes('reload') && !caddyUp
+        ? { code: 1, stdout: '', stderr: 'caddy starting' }
+        : { code: 0, stdout: '', stderr: '' }
+    const api = new CloudflareApi('cf-token', ACCOUNT, cf.fetchImpl)
+    const moved = new Apps(
+      new Store(dir),
+      flaky,
+      'caddy',
+      undefined,
+      { appsDomain: 'apps.example.com', edge: 'cloudflare' },
+      {
+        domains: new Domains({ api, appsZoneId: APPS_ZONE, tunnelId: TUNNEL }),
+        access: new AccessApps(api, POLICY),
+      },
+    )
+    const hosts = () => accessApps()[0]?.destinations?.map((d) => d.uri)
+    await assert.rejects(moved.refreshSites())
+    assert.deepEqual(
+      hosts(),
+      ['tagtape.spotcraft.dev', 'tagtape.apps.example.com'],
+      'the old site is back, and still behind Access',
+    )
+    caddyUp = true
+    assert.deepEqual(await moved.refreshSites(), ['tagtape'])
+    assert.deepEqual(hosts(), ['tagtape.apps.example.com'], 'narrowed once the new site is live')
+  })
+
   it('refuses protection when the server has no Access policy', async () => {
     const plain = buildApp({
       token: TOKEN,

@@ -16,6 +16,16 @@ export class AccessApps {
     this.#policyId = policyId
   }
 
+  /**
+   * Adds hosts to the app's protection and keeps the ones it has, for a switch of hosts: until
+   * the new ones are live, both must stay behind Access. `sync` narrows it afterwards.
+   */
+  async extend(name: string, hosts: string[]): Promise<void> {
+    const existing = await this.#api.accessApp(accessAppName(name))
+    const current = (existing?.destinations ?? []).map((d) => d.uri).filter(Boolean) as string[]
+    await this.sync(name, [...current, ...hosts.filter((h) => !current.includes(h))], true)
+  }
+
   /** Protects the app's hosts, updates them, or takes the protection away. */
   async sync(name: string, hosts: string[], protect: boolean): Promise<void> {
     const appName = accessAppName(name)

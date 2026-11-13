@@ -89,7 +89,8 @@ the app removes the Access application. Without the policy, `protected: true` re
 
 Each app's Caddy site depends on `EDGE` and `APPS_DOMAIN`. When the agent starts, it rewrites
 any site that doesn't match them and reloads Caddy (retrying while Caddy starts), so switching
-modes applies to every app at once. A protected app's new hosts go behind Access first. If
+modes applies to every app at once. A protected app's new hosts go behind Access first, next to its old ones,
+and only once Caddy runs the new sites does Access drop the old hosts. If
 Caddy rejects the rewrite, the previous sites are put back. An app left without any address
 (no `APPS_DOMAIN` and no domain of its own) gets no site until it has one.
 
