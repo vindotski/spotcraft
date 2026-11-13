@@ -1,17 +1,17 @@
 ---
 name: commit-message
-description: Suggest a Conventional Commits message for the current changes in Spotcraft. Use when a step is finished and verified, or when the user asks for a commit message. The agent only suggests; the user commits.
+description: Write a Conventional Commits message and commit the current changes in Spotcraft. Use when a step is finished and verified, or when the user asks for a commit. The agent commits; the user pushes, tags and merges.
 ---
 
-# Commit message
+# Commit
 
-The user commits. You never run `git commit`, `git push` or `git tag`. You suggest the message, and the user copies it.
+You commit finished, verified work with this message. The user pushes, tags and merges: never run `git push` or `git tag`.
 
 ## Steps
 
 1. Read the change: `git status` and `git diff` (plus `git diff --staged` if anything is staged). Base the message on the diff, not on memory.
 2. If the changes mix unrelated work, say so and propose how to split them into separate commits.
-3. Output the message in one fenced code block, ready to paste. Nothing else goes in the block.
+3. Stage only the files that belong to the commit (`git add <paths>`), commit with the message, and show the user the resulting `git log --oneline` line.
 
 ## Format
 
@@ -42,8 +42,10 @@ Optional, but use one when it fits:
 | `dashboard` | `apps/dashboard` |
 | `site` | `apps/site` |
 | `ui` | `packages/ui`: shared components and theme |
-| `agent` | `agent/`: the deploy agent on the apps server |
-| `infra` | `infra/`: compose, Caddy, cloud-init, OpenTofu |
+| `agent` | `agent/`: the deploy agent |
+| `kit` | `packages/kit`: the backend kit on npm |
+| `cli` | `packages/cli`: the `spotcraft` CLI on npm |
+| `infra` | `infra/`: compose, Caddy, cloud-init, OpenTofu, the deploy script |
 | `docs` | `docs/`, ADRs |
 | `deps` | dependency changes |
 | `ci` | GitHub workflows |
