@@ -65,10 +65,10 @@ in `infra/hetzner`.
 
 ## 4. Choose the images
 
-Use the published images (`vindotski/spotcraft-agent` and `vindotski/spotcraft-dashboard`), or
+Use the published image (`vindotski/spotcraft`, which runs both the agent and the dashboard), or
 publish your own: set the repository variable `DOCKERHUB_USERNAME` and the secret
 `DOCKERHUB_TOKEN` (a Docker Hub access token with read and write access), then push to `main`.
-CI builds both images for amd64 and arm64.
+CI builds the image for amd64 and arm64.
 
 ## 5. Create the GitHub environment
 

@@ -36,18 +36,20 @@ uptime-probe target per app, which vmagent reads (`file_sd_configs`).
 Checked when the server starts (`src/env.ts`); a missing or invalid value stops it with a
 message naming the variable.
 
-| Env                       | Default                              | Meaning                                                                            |
-| ------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
-| `AGENT_URL`               | —                                    | e.g. `http://10.0.0.2:4000`                                                        |
-| `AGENT_TOKEN`             | —                                    | same token as the agent, 32+ characters                                            |
-| `DASHBOARD_PASSWORD_HASH` | —                                    | from the `hash-password` script                                                    |
-| `SESSION_SECRET`          | —                                    | 32+ characters; changing it logs everyone out                                      |
-| `VICTORIAMETRICS_URL`     | `http://victoriametrics:8428`        | metrics query API                                                                  |
-| `PROBES_FILE`             | empty (image: `/probes/probes.json`) | where to write probe targets                                                       |
-| `CF_ACCESS_TEAM_DOMAIN`   | empty                                | `<team>.cloudflareaccess.com`; with the next, an Access sign-in skips the password |
-| `CF_ACCESS_AUD`           | empty                                | the dashboard Access application's AUD tag; set both or neither                    |
+| Env                       | Default                                | Meaning                                                                            |
+| ------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------- |
+| `AGENT_URL`               | —                                      | e.g. `http://10.0.0.2:4000`                                                        |
+| `AGENT_TOKEN`             | —                                      | same token as the agent, 32+ characters                                            |
+| `DASHBOARD_PASSWORD_HASH` | —                                      | from the `hash-password` script                                                    |
+| `SESSION_SECRET`          | —                                      | 32+ characters; changing it logs everyone out                                      |
+| `VICTORIAMETRICS_URL`     | `http://victoriametrics:8428`          | metrics query API                                                                  |
+| `PROBES_FILE`             | empty (Compose: `/probes/probes.json`) | where to write probe targets                                                       |
+| `CF_ACCESS_TEAM_DOMAIN`   | empty                                  | `<team>.cloudflareaccess.com`; with the next, an Access sign-in skips the password |
+| `CF_ACCESS_AUD`           | empty                                  | the dashboard Access application's AUD tag; set both or neither                    |
 
-The image also sets the adapter-node proxy settings for running behind Caddy:
+It runs from the `spotcraft` image (the root `Dockerfile`, shared with the agent; Compose starts
+it with `working_dir: /app/dashboard` and `command: ["build"]`). Compose also sets `PORT=3000`,
+`PROBES_FILE=/probes/probes.json` and the adapter-node proxy settings for running behind Caddy:
 `PROTOCOL_HEADER=x-forwarded-proto`, `ADDRESS_HEADER=X-Forwarded-For`, `XFF_DEPTH=1`.
 
 ```sh
@@ -55,7 +57,7 @@ pnpm --filter @spotcraft/dashboard hash-password   # prints DASHBOARD_PASSWORD_H
 pnpm --filter @spotcraft/dashboard build           # output in build/, no runtime node_modules needed
 pnpm --filter @spotcraft/dashboard typecheck
 pnpm --filter @spotcraft/dashboard test            # node:test, test/*.test.ts
-docker build -f apps/dashboard/Dockerfile .        # from the repository root
+docker build .                                     # the spotcraft image, from the repository root
 ```
 
 ## Security

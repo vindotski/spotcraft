@@ -63,12 +63,21 @@ services:
 
   dashboard:
     <<: *hardened
-    image: ${SPOTCRAFT_DASHBOARD_IMAGE:-vindotski/spotcraft-dashboard}:${SPOTCRAFT_TAG:-latest}
+    # The one Spotcraft image, running the dashboard (ADR 0025). It never gets the Docker socket.
+    image: ${SPOTCRAFT_IMAGE:-vindotski/spotcraft}:${SPOTCRAFT_TAG:-latest}
+    working_dir: /app/dashboard
+    command: ["build"]
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev
     mem_limit: 512m
     environment:
+      PORT: 3000
+      # Behind Caddy: the visitor's scheme and address (the login lockout keys on it).
+      PROTOCOL_HEADER: x-forwarded-proto
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: 1
+      PROBES_FILE: /probes/probes.json
       AGENT_URL: http://${APPS_PRIVATE_IP:?set APPS_PRIVATE_IP in .env}:4000
       AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
       DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
@@ -79,6 +88,18 @@ services:
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
     volumes:
       - probes:/probes # uptime-probe targets the dashboard writes for vmagent
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/nodejs/bin/node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   victoriametrics:
     <<: *hardened
