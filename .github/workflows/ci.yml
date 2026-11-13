@@ -223,7 +223,8 @@ jobs:
   # trusted publisher can be linked; delete it after.
   npm:
     name: npm (spotcraft)
-    needs: [verify, images]
+    # node24: the CLI promises Node 24 (engines) and isn't published unless it works there.
+    needs: [verify, images, node24]
     # Only the original repository publishes these names; forks of the template skip it.
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
     runs-on: ubuntu-24.04
@@ -269,7 +270,8 @@ jobs:
   # kit-v* tags only: publishes @spotcraft/kit alone, at its own version (ADR 0027).
   kit:
     name: npm (@spotcraft/kit)
-    needs: verify
+    # node24: the kit promises Node 24 (engines) and isn't published unless it works there.
+    needs: [verify, node24]
     if: startsWith(github.ref, 'refs/tags/kit-v') && github.repository == 'vindotski/spotcraft'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
