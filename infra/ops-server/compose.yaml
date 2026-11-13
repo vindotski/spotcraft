@@ -16,7 +16,7 @@ x-hardened: &hardened
 services:
   caddy:
     <<: *hardened
-    image: caddy:2.11.9@sha256:0c2243efcf437ab7f7a978f1027fcf0d4f9be8a75df27b1b3fbc5dbe0ffa8cf0
+    image: caddy:2.11.9@sha256:e40b94d0a43b5ff69cb20568d73f10c70703df7b0ffc2298eb3d723cdc9d0bd1
     cap_add: [NET_BIND_SERVICE] # ports 80 and 443
     read_only: true
     tmpfs:
@@ -57,7 +57,7 @@ services:
 
   victoriametrics:
     <<: *hardened
-    image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
+    image: victoriametrics/victoria-metrics:v1.156.0@sha256:da8a90ac0912f16589be2b96a6441a2fca4bca415c83783d972d92e3b5b66970
     read_only: true
     # VictoriaMetrics sizes its caches from this limit (60% by default).
     mem_limit: 1g
@@ -72,7 +72,7 @@ services:
 
   vmagent:
     <<: *hardened
-    image: victoriametrics/vmagent:v1.155.0@sha256:8e3c03905be15bba8312d4868e8ae6f9fc2fefee0a41d544472034249ca42bb4
+    image: victoriametrics/vmagent:v1.156.0@sha256:d3229ab469c54ae5266e86246932266bad29b06668b5371acbd6d3de1b3035e7
     read_only: true
     # Buffers samples here while VictoriaMetrics is unreachable.
     tmpfs:
