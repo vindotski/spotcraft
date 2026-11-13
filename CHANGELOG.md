@@ -36,6 +36,21 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 - The `spotcraft-site` image is no longer built or published; the site isn't an app on the
   apps server any more.
 
+### Security
+
+- A crafted dashboard link with an encoded `?` or `#` in the app name (for example
+  `/apps/blog%3Fpurge=true`) could turn Remove into "remove and delete the database", or a user
+  delete into an app delete. App routes now only match valid names, and agent calls encode them.
+- App names starting with `app-` are refused: `app-<name>` is how Caddy reaches each app, so such
+  an app could receive another app's traffic.
+- A custom domain can't be one of the apps domain's own hosts (`fallback.`, `www.`…), whose
+  records OpenTofu manages.
+- Each app's `compose.yaml`, which carries its database password, is now mode 600, like
+  `secrets.json`. The agent tightens existing ones when it starts.
+- The dashboard's login lockout counts an IPv6 client by its /64 and no longer grows without
+  bound.
+- The agent and the kit pin `search_path` when they work in an app's database.
+
 ### Changed
 
 - **Performance**: cAdvisor collects only containers' CPU and memory, every 30 seconds, with the

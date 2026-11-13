@@ -11,6 +11,12 @@ to run against an older schema.
 
 ## [Unreleased]
 
+### Security
+
+- `provision` and `migrate` pin `search_path` to `pg_catalog, auth` on their connections, so a
+  schema an app creates in its own database can't shadow what the migrations and grants use.
+  No change to the `auth` schema (still version 1); works with every Spotcraft from 0.2.0.
+
 ## [0.3.0] - 2026-11-13
 
 Released together with Spotcraft 0.3.0, at the same version; no changes to the kit's code.

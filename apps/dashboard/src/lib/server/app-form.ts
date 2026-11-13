@@ -2,9 +2,9 @@ import {
   DOMAIN,
   ENV_KEY,
   IMAGE,
+  isReservedName,
   MEMORY,
   NAME,
-  RESERVED_NAMES,
   TAG,
 } from '@spotcraft/agent/app-spec'
 import type { AppInput } from './agent.ts'
@@ -67,8 +67,10 @@ export function parseAppForm(
     if (!matches(NAME, values.name)) {
       errors.name =
         'Lower-case letters, digits and dashes; 2–32 characters, starting with a letter.'
-    } else if (RESERVED_NAMES.has(values.name)) {
-      errors.name = `"${values.name}" is reserved.`
+    } else if (isReservedName(values.name)) {
+      errors.name = values.name.startsWith('app-')
+        ? 'Names starting with "app-" are reserved.'
+        : `"${values.name}" is reserved.`
     }
   }
   if (!matches(IMAGE, values.image)) errors.image = 'A repository like vindotski/tagtape.'

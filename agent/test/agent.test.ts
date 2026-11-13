@@ -177,12 +177,26 @@ describe('agent', () => {
     for (const reserved of ['dashboard', 'victoriametrics', 'cloudflared', 'blackbox']) {
       assert.equal((await put(reserved, spec)).statusCode, 400, reserved)
     }
+    // `app-<name>` is the alias Caddy reaches each app by: `app-blog` would answer for `blog`.
+    assert.equal((await put('app-blog', spec)).statusCode, 400)
     assert.equal((await put('ok', { ...spec, domain: 'evil.app {\n}' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, image: 'UPPER/case' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, tag: '-x' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, env: { 'BAD-KEY': 'x' } })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, privileged: true })).statusCode, 400)
     assert.equal(docker.calls.length, 0, 'nothing reaches docker')
+  })
+
+  it("keeps each app's compose file, which holds its database password, private", async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/apps/tagtape',
+      headers: auth,
+      payload: spec,
+    })
+    assert.equal(res.statusCode, 200, res.body)
+    const { mode } = await stat(join(dir, 'apps/tagtape/compose.yaml'))
+    assert.equal(mode & 0o777, 0o600)
   })
 
   it('refuses a domain another app already uses', async () => {
