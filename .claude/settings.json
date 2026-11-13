@@ -15,7 +15,6 @@
       "Bash(tofu validate *)"
     ],
     "deny": [
-      "Bash(git tag *)",
       "Bash(git push *--force*)",
       "Bash(git push *-f *)",
       "Bash(git push *-f)",
