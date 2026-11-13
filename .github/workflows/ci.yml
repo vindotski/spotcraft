@@ -121,8 +121,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --filter @spotcraft/kit... --filter spotcraft...
-      - run: pnpm --filter @spotcraft/kit --filter spotcraft test
+      # By folder: `spotcraft` is also the workspace root's name, and would run every package.
+      - run: pnpm install --frozen-lockfile --filter ./packages/kit... --filter ./packages/cli...
+      - run: pnpm --filter ./packages/kit --filter ./packages/cli test
 
   # Needs the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN to push.
   images:
