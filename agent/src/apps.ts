@@ -340,6 +340,8 @@ export class Apps {
     return this.#exclusive(async () => {
       const pending: { spec: AppSpec; files: AppFiles; site: string }[] = []
       for (const spec of await this.#store.list()) {
+        // Compose files carry DATABASE_URL; older ones were written readable by everyone.
+        await this.#store.lockDownCompose(spec.name)
         const files = await this.#store.read(spec.name)
         const site = renderSite(spec, this.settings)
         if (files && files.site !== site) pending.push({ spec, files, site })
