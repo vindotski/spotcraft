@@ -1,7 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit'
-import { deployApp, getApp, getSettings } from '#lib/server/agent.ts'
+import { deployApp, getApp, getSettings, listApps } from '#lib/server/agent.ts'
 import { envToText, parseAppForm } from '#lib/server/app-form.ts'
 import { dockerHubTags } from '#lib/server/dockerhub.ts'
+import { writeProbes } from '#lib/server/probes.ts'
 import type { Actions, PageServerLoad } from './$types'
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -41,6 +42,8 @@ export const actions: Actions = {
     const result = await deployApp(params.name, input, { takeOver: values.takeOver })
     if (!result.ok)
       return fail(502, { values, errors, deployError: result.error, output: result.output ?? null })
+    // A new domain or sign-in setting changes the app's probe targets and module.
+    await writeProbes(await listApps()).catch(() => {})
     redirect(303, `/apps/${params.name}`)
   },
 }

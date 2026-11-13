@@ -29,12 +29,19 @@ export interface Config {
         accessPolicyId: string | undefined
       }
     | undefined
+  /** Settings that are present but have no effect, worth a line in the log at startup. */
+  notices: string[]
 }
 
 const HEX32 = /^[0-9a-f]{32}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-function loadCloudflare(env: NodeJS.ProcessEnv, edge: Edge, appsDomain: string | undefined) {
+function loadCloudflare(
+  env: NodeJS.ProcessEnv,
+  edge: Edge,
+  appsDomain: string | undefined,
+  notices: string[],
+) {
   const values = {
     apiToken: env.CLOUDFLARE_API_TOKEN?.trim() ?? '',
     accountId: env.CLOUDFLARE_ACCOUNT_ID?.trim() ?? '',
@@ -42,8 +49,12 @@ function loadCloudflare(env: NodeJS.ProcessEnv, edge: Edge, appsDomain: string |
     tunnelId: env.CLOUDFLARE_TUNNEL_ID?.trim() ?? '',
   }
   if (!values.apiToken) return undefined
+  // Set ahead of a switch to Cloudflare (or left after switching back): unused, not fatal.
   if (edge !== 'cloudflare' || !appsDomain) {
-    throw new Error('CLOUDFLARE_API_TOKEN needs EDGE=cloudflare and APPS_DOMAIN')
+    notices.push(
+      'CLOUDFLARE_API_TOKEN is set but unused: custom domains through Cloudflare need EDGE=cloudflare and APPS_DOMAIN',
+    )
+    return undefined
   }
   if (!HEX32.test(values.accountId))
     throw new Error('CLOUDFLARE_ACCOUNT_ID must be 32 hex characters')
@@ -71,6 +82,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (appsDomain && !new RegExp(DOMAIN).test(appsDomain)) {
     throw new Error('APPS_DOMAIN must be a domain like apps.example.com, without https://')
   }
+  const notices: string[] = []
   const edge = env.EDGE || 'direct'
   if (edge !== 'direct' && edge !== 'cloudflare') {
     throw new Error('EDGE must be "direct" or "cloudflare"')
@@ -89,6 +101,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     postgresUrl,
     appsDomain,
     edge,
-    cloudflare: loadCloudflare(env, edge, appsDomain),
+    cloudflare: loadCloudflare(env, edge, appsDomain, notices),
+    notices,
   }
 }

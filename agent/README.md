@@ -60,7 +60,9 @@ an older dashboard never takes a database away. With `database: true`, the app c
 
 With `EDGE=cloudflare`, `APPS_DOMAIN` and all four of `CLOUDFLARE_API_TOKEN`,
 `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_APPS_ZONE_ID` and `CLOUDFLARE_TUNNEL_ID` (from
-`infra/cloudflare`), the agent sets up each app's custom domain itself (ADR 0021). A root domain
+`infra/cloudflare`), the agent sets up each app's custom domain itself (ADR 0021). Set without
+`EDGE=cloudflare` and `APPS_DOMAIN` (for example ahead of a switch), they are ignored and the
+agent logs a notice at startup. A root domain
 also gets `www.`.
 
 - **The domain's zone is in the account**: the agent creates a proxied CNAME to the apps tunnel,
