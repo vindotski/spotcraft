@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import Fastify, { type FastifyServerOptions } from 'fastify'
 import type { AppBody } from './app-spec.ts'
-import { appBodySchema, nameParamsSchema, RESERVED_NAMES } from './app-spec.ts'
+import { appBodySchema, hostnames, nameParamsSchema, RESERVED_NAMES } from './app-spec.ts'
 import { AgentError, type Apps } from './apps.ts'
 
 export interface BuildOptions {
@@ -69,6 +69,9 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
 
   app.get('/health', async () => ({ ok: true }))
 
+  // What apps are served under, so the dashboard can show an app's address before it exists.
+  app.get('/settings', async () => apps.settings)
+
   app.get('/apps', async () => ({ apps: await apps.list() }))
 
   app.get<{ Params: NameParams }>(
@@ -80,9 +83,20 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
     },
   )
 
-  app.put<{ Params: NameParams; Body: AppBody }>(
+  app.put<{ Params: NameParams; Body: AppBody; Querystring: { takeOver: boolean } }>(
     '/apps/:name',
-    { schema: { params: nameParamsSchema, body: appBodySchema } },
+    {
+      schema: {
+        params: nameParamsSchema,
+        body: appBodySchema,
+        // Replace a custom domain's existing DNS records (ADR 0021).
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { takeOver: { type: 'boolean', default: false } },
+        },
+      },
+    },
     async (request, reply) => {
       const { name } = request.params
       if (RESERVED_NAMES.has(name)) {
@@ -97,13 +111,30 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
           .code(400)
           .send({ error: 'DATABASE_URL is set by Spotcraft when the app has a database' })
       }
-      const taken = (await apps.list()).find(
-        (other) => other.name !== name && other.domain === request.body.domain,
-      )
-      if (taken) {
-        return reply.code(409).send({ error: `${request.body.domain} is used by ${taken.name}` })
+      const { appsDomain } = apps.settings
+      // Left out, `protected` keeps its current value, like `database`.
+      const protect = request.body.protected ?? current?.protected ?? false
+      if (protect && !apps.settings.access) {
+        return reply
+          .code(409)
+          .send({ error: 'This server has no Cloudflare Access policy for protected apps' })
       }
-      return apps.deploy({ name, ...request.body, database })
+      if (!appsDomain && !request.body.domain) {
+        return reply
+          .code(400)
+          .send({ error: 'A domain is required: this server has no APPS_DOMAIN' })
+      }
+      // No host may belong to two apps: a custom domain can't be another app's default host.
+      const wanted = hostnames({ name, domain: request.body.domain }, appsDomain)
+      for (const other of await apps.list()) {
+        if (other.name === name) continue
+        const clash = hostnames(other, appsDomain).find((host) => wanted.includes(host))
+        if (clash) return reply.code(409).send({ error: `${clash} is used by ${other.name}` })
+      }
+      return apps.deploy(
+        { name, ...request.body, database, protected: protect },
+        { takeOver: request.query.takeOver },
+      )
     },
   )
 
@@ -126,6 +157,16 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
   )
 
   // An app's users (ADR 0018), read and deleted in its own database's `auth` tables.
+  // Where the app's custom domain stands, and which records its owner still has to create.
+  app.get<{ Params: NameParams }>(
+    '/apps/:name/domain',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) => {
+      const status = await apps.domainStatus(request.params.name)
+      return status ?? reply.code(404).send({ error: 'No such app' })
+    },
+  )
+
   app.get<{ Params: NameParams; Querystring: { limit: number; cursor?: string } }>(
     '/apps/:name/users',
     {

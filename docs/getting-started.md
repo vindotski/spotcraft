@@ -5,7 +5,9 @@ dashboard and monitoring, joined by a private network. You deploy Spotcraft itse
 Actions, then add apps from the dashboard.
 
 You need: a GitHub account, a Docker Hub account if you publish your own images, two
-Debian/Ubuntu servers (or a Hetzner Cloud account), and a domain for the dashboard.
+Debian/Ubuntu servers (or a Hetzner Cloud account), and a domain for the dashboard. A
+Cloudflare account is optional: with it, both servers hide behind Cloudflare and DNS is set up
+for you.
 
 ## 1. Fork the repository
 
@@ -37,12 +39,29 @@ Either way, wait a few minutes for the first boot, then check that both servers 
 ssh -i ~/.ssh/spotcraft_deploy deploy@<server ip> cat /var/log/spotcraft-ready
 ```
 
-## 3. Point the dashboard's domain
+## 3. Point the domains
 
-Create A and AAAA records for the dashboard's domain (e.g. `dash.example.com`) pointing at the
-**ops server**. If your DNS is on Cloudflare, leave the records **DNS only** (not proxied): Caddy
-gets the certificate itself, and the dashboard needs visitors' real addresses for its login
-lockout.
+Pick a domain for the dashboard (e.g. `dash.example.com`) and, optionally, an **apps domain**
+(e.g. `example.com`): every app is then served at `<name>.example.com` without any DNS work
+per app. The apps domain must be a zone's apex (the root of a domain you own), so one
+certificate covers every app.
+
+**Without Cloudflare**, create these records yourself:
+
+- A and AAAA records for the dashboard's domain, pointing at the **ops server**.
+- With an apps domain, a wildcard A and AAAA record (`*.example.com`) pointing at the **apps
+  server**.
+
+If your DNS is on Cloudflare but you don't use the module below, leave the records **DNS only**
+(not proxied). Caddy then gets the certificates itself, and the dashboard sees visitors' real
+addresses for its login lockout.
+
+**With Cloudflare**, apply [`infra/cloudflare`](../infra/cloudflare/README.md) instead. It
+needs the zones in your Cloudflare account. It creates a Cloudflare Tunnel for each server, the
+wildcard and dashboard records, TLS and WAF settings, a rate limit on the login page and,
+optionally, Cloudflare Access in front of the dashboard. Its README lists the API tokens to
+create. Once Spotcraft runs behind the tunnels, close ports 80 and 443 with `edge = "cloudflare"`
+in `infra/hetzner`.
 
 ## 4. Choose the images
 
@@ -70,6 +89,23 @@ In your fork's **Settings → Environments**, create `production` with:
 `APPS_PRIVATE_IP` and `OPS_PRIVATE_IP` are optional variables, for private addresses other
 than `10.0.0.2` and `10.0.0.3`.
 
+Optional settings, all in the same environment:
+
+| Kind     | Name                           | Value                                                      |
+| -------- | ------------------------------ | ---------------------------------------------------------- |
+| variable | `APPS_DOMAIN`                  | the apps domain, e.g. `example.com`                        |
+| variable | `EDGE`                         | `cloudflare` to run behind the tunnels (default `direct`)  |
+| secret   | `CLOUDFLARE_TUNNEL_TOKEN_APPS` | `tofu output -raw apps_tunnel_token` in `infra/cloudflare` |
+| secret   | `CLOUDFLARE_TUNNEL_TOKEN_OPS`  | `tofu output -raw ops_tunnel_token`                        |
+| secret   | `CLOUDFLARE_API_TOKEN`         | the agent's own token (`infra/cloudflare` README)          |
+| variable | `CLOUDFLARE_ACCOUNT_ID`        | from the `agent_settings` output                           |
+| variable | `CLOUDFLARE_APPS_ZONE_ID`      | from the `agent_settings` output                           |
+| variable | `CLOUDFLARE_TUNNEL_ID`         | from the `agent_settings` output                           |
+| variable | `CLOUDFLARE_ACCESS_POLICY_ID`  | from the `agent_settings` output, if you use Access        |
+
+With the four `CLOUDFLARE_*` agent settings, Spotcraft sets up each app's custom domain itself.
+With the Access policy as well, any app can be put behind a sign-in.
+
 ## 6. Deploy Spotcraft
 
 Run the **Deploy** workflow (**Actions → Deploy → Run workflow**) with a version, such as
@@ -83,15 +119,23 @@ In the dashboard, choose **Add app** and fill in:
 - **Name**: lower-case letters, digits and dashes, e.g. `blog`.
 - **Image** and **tag**: a public image on Docker Hub, e.g. `you/blog` and `1.0.0`. Recent tags
   are suggested.
-- **Domain**: e.g. `blog.example.com`. Point its A and AAAA records at the **apps server**
-  (DNS only, if on Cloudflare). A root domain like `example.com` also gets `www.` redirected.
+- **Custom domain**: optional with an apps domain, since the app is always served at
+  `<name>.<apps domain>`. A root domain like `example.com` also gets `www.` redirected.
+  - Without Cloudflare: point the domain's A and AAAA records at the **apps server**, or a CNAME
+    at `<name>.<apps domain>`.
+  - With the Cloudflare agent settings: a domain in your Cloudflare account is set up for you.
+    Tick **Take over existing DNS records** if it still points at an old server. For any other
+    domain, the app's page shows the CNAME (and any TXT records) to add where its DNS is hosted.
+- **Require sign-in**: with Cloudflare Access, visitors must sign in as one of the owners
+  first, for example for a staging app.
 - **Container port**, **memory** and **CPU** limits, and **environment variables**.
 - **Database**: tick it to give the app its own Postgres database on the apps server, as
   `DATABASE_URL`. Removing the app keeps the database unless you also choose to delete it.
 
 **Deploy** pulls the image, waits until the app is healthy and switches traffic to it. If
-anything fails, you see why, and the previous version keeps running. The certificate arrives
-on the first HTTPS request once DNS points at the apps server.
+anything fails, you see why, and the previous version keeps running. Without Cloudflare, the
+certificate arrives on the first HTTPS request once DNS points at the apps server; behind
+Cloudflare, Cloudflare holds the certificates.
 
 Apps run with a read-only filesystem by default; turn it off for apps that write outside
 `/tmp`.
@@ -104,6 +148,9 @@ throughout; they are only restarted when a release says so.
 
 To update an app, edit it in the dashboard and pick the new tag. To roll an app back, pick the
 old tag.
+
+To move a running instance behind Cloudflare without downtime, follow **Moving an existing
+instance** in the [`infra/cloudflare` README](../infra/cloudflare/README.md).
 
 ## Next
 

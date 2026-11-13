@@ -2,6 +2,12 @@
 # in sites/<app>.caddy (written by the agent); Caddy handles HTTPS automatically.
 {
 	servers {
+		# Behind a Cloudflare Tunnel (EDGE=cloudflare) requests come from cloudflared on a private
+		# address and carry the visitor's address in CF-Connecting-IP; the deploy then sets
+		# CADDY_TRUSTED_PROXIES=private_ranges. Otherwise only loopback is trusted, so a visitor
+		# can't claim another address with the header (ADR 0021).
+		trusted_proxies static {$CADDY_TRUSTED_PROXIES:127.0.0.1/32}
+		client_ip_headers CF-Connecting-IP
 		timeouts {
 			read_header 10s
 			read_body 30s

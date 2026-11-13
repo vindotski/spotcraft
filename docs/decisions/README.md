@@ -24,3 +24,4 @@ that supersedes the old one; old records are never rewritten.
 | 0017 | [A local stack that matches the server](0017-local-stack.md)                               | accepted           |
 | 0018 | [The dashboard lists and deletes an app's users](0018-user-management.md)                  | accepted           |
 | 0019 | [One version for the project, including its npm packages](0019-one-version-with-npm.md)    | accepted           |
+| 0021 | [Apps get a default subdomain; Cloudflare can sit in front](0021-cloudflare-edge.md)       | accepted           |

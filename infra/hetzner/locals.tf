@@ -10,6 +10,13 @@ locals {
     ops  = var.ops_server_type
   }
 
+  # Caddy's public ports; closed when Cloudflare Tunnels deliver the traffic.
+  web_rules = {
+    HTTP     = { protocol = "tcp", port = "80" }
+    HTTPS    = { protocol = "tcp", port = "443" }
+    "HTTP/3" = { protocol = "udp", port = "443" }
+  }
+
   labels = {
     project    = "spotcraft"
     managed_by = "opentofu"

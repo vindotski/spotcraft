@@ -20,6 +20,17 @@ variable "deploy_ssh_public_key" {
   }
 }
 
+variable "edge" {
+  description = "direct: Caddy is public on ports 80 and 443. cloudflare: traffic arrives through Cloudflare Tunnels (infra/cloudflare), so those ports are closed (ADR 0021)."
+  type        = string
+  default     = "direct"
+
+  validation {
+    condition     = contains(["direct", "cloudflare"], var.edge)
+    error_message = "Use direct or cloudflare."
+  }
+}
+
 variable "hcloud_token" {
   description = "Hetzner Cloud API token with read and write access. Leave unset to use the HCLOUD_TOKEN environment variable."
   type        = string

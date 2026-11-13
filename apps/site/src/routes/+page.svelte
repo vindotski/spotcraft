@@ -12,8 +12,8 @@
       text: 'Image, tag, domain, limits and environment variables. Recent tags come straight from Docker Hub.',
     },
     {
-      title: 'HTTPS without thinking',
-      text: 'Caddy gets and renews certificates on the first request, redirects www, and speaks HTTP/3.',
+      title: 'An address for every app',
+      text: 'Every app is live at its own subdomain the moment it deploys; a custom domain is one CNAME. HTTPS is automatic.',
     },
     {
       title: 'Rollback on failure',
@@ -25,7 +25,7 @@
     },
     {
       title: 'Hardened by default',
-      text: 'Apps run read-only, without Linux capabilities, with limits. Images are distroless and scanned in CI.',
+      text: 'Apps run read-only, without Linux capabilities, with limits. Optionally behind Cloudflare, with the servers’ ports closed.',
     },
     {
       title: 'Your servers, your secrets',
@@ -44,7 +44,7 @@
     },
     {
       title: 'Add your apps',
-      text: 'Log in, add an image and a domain, point the domain at the apps server. That’s the whole loop.',
+      text: 'Log in and add an image. It’s live at its own subdomain; bring your own domain whenever you like.',
     },
   ]
 
@@ -54,7 +54,7 @@
     { name: 'VictoriaMetrics', href: 'https://victoriametrics.com', role: 'Stores the metrics and uptime the dashboard draws.' },
     { name: 'SvelteKit', href: 'https://svelte.dev', role: 'The dashboard and this site.' },
     { name: 'Fastify', href: 'https://fastify.dev', role: 'The agent that deploys apps on the apps server.' },
-    { name: 'OpenTofu', href: 'https://opentofu.org', role: 'Creates the servers, network and firewall on Hetzner.' },
+    { name: 'OpenTofu', href: 'https://opentofu.org', role: 'Creates the servers on Hetzner and, optionally, the Cloudflare tunnels, DNS and Access.' },
   ]
 </script>
 

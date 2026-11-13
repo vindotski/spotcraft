@@ -17,8 +17,9 @@ resource "hcloud_network_subnet" "main" {
   ip_range     = "10.0.0.0/24"
 }
 
-# Public traffic: SSH, HTTP and HTTPS (incl. HTTP/3) and ping. The private network is not
-# filtered by Hetzner firewalls; ufw on each server covers that side.
+# Public traffic: SSH, ping and, unless Cloudflare Tunnels deliver it (edge = "cloudflare"),
+# HTTP and HTTPS (incl. HTTP/3). The private network is not filtered by Hetzner firewalls;
+# ufw on each server covers that side.
 resource "hcloud_firewall" "main" {
   name   = "spotcraft"
   labels = local.labels
@@ -31,28 +32,15 @@ resource "hcloud_firewall" "main" {
     source_ips  = var.ssh_source_ips
   }
 
-  rule {
-    description = "HTTP"
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "80"
-    source_ips  = ["0.0.0.0/0", "::/0"]
-  }
-
-  rule {
-    description = "HTTPS"
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "443"
-    source_ips  = ["0.0.0.0/0", "::/0"]
-  }
-
-  rule {
-    description = "HTTP/3"
-    direction   = "in"
-    protocol    = "udp"
-    port        = "443"
-    source_ips  = ["0.0.0.0/0", "::/0"]
+  dynamic "rule" {
+    for_each = var.edge == "direct" ? local.web_rules : {}
+    content {
+      description = rule.key
+      direction   = "in"
+      protocol    = rule.value.protocol
+      port        = rule.value.port
+      source_ips  = ["0.0.0.0/0", "::/0"]
+    }
   }
 
   rule {

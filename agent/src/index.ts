@@ -1,13 +1,32 @@
+import { AccessApps } from './access.ts'
 import { buildApp } from './app.ts'
 import { Apps } from './apps.ts'
+import { CloudflareApi } from './cloudflare.ts'
 import { loadConfig } from './config.ts'
 import { postgresDatabases } from './databases.ts'
+import { Domains } from './domains.ts'
 import { execRunner } from './runner.ts'
 import { Store } from './store.ts'
 
 const config = loadConfig()
 const databases = config.postgresUrl ? postgresDatabases(config.postgresUrl) : undefined
-const apps = new Apps(new Store(config.dataDir), execRunner, config.caddyContainer, databases)
+const cf = config.cloudflare
+const api = cf ? new CloudflareApi(cf.apiToken, cf.accountId) : undefined
+const cloudflare =
+  cf && api
+    ? {
+        domains: new Domains({ api, appsZoneId: cf.appsZoneId, tunnelId: cf.tunnelId }),
+        access: cf.accessPolicyId ? new AccessApps(api, cf.accessPolicyId) : undefined,
+      }
+    : undefined
+const apps = new Apps(
+  new Store(config.dataDir),
+  execRunner,
+  config.caddyContainer,
+  databases,
+  { appsDomain: config.appsDomain, edge: config.edge },
+  cloudflare,
+)
 const app = buildApp({
   token: config.token,
   apps,

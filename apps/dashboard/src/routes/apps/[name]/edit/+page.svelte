@@ -18,4 +18,7 @@
   withName={false}
   tags={data.tags}
   submitLabel="Save and deploy"
+  appsDomain={data.appsDomain}
+  dns={data.dns}
+  access={data.access}
 />

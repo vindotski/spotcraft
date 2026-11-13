@@ -55,12 +55,14 @@ jobs:
           for s in apps-server ops-server; do
             docker compose -f infra/$s/compose.yaml --env-file infra/$s/.env.example config --quiet
           done
-      - name: Check the OpenTofu module (format, validate)
+      - name: Check the OpenTofu modules (format, validate)
         env:
           TOFU: ghcr.io/opentofu/opentofu:1.13.9@sha256:f5aef7f2632b490e3c289a239d7974497d0583f3df6bfa35e8eb31a367ee5ec0
         run: |
-          docker run --rm -v "$PWD/infra:/infra" -w /infra/hetzner -e TF_DATA_DIR=/tmp/tf --entrypoint sh "$TOFU" \
-            -c 'tofu fmt -check -diff && tofu init -backend=false -input=false -lockfile=readonly >/dev/null && tofu validate'
+          for module in hetzner cloudflare; do
+            docker run --rm -v "$PWD/infra:/infra" -w "/infra/$module" -e TF_DATA_DIR=/tmp/tf --entrypoint sh "$TOFU" \
+              -c 'tofu fmt -check -diff && tofu init -backend=false -input=false -lockfile=readonly >/dev/null && tofu validate'
+          done
 
   # Needs the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN to push.
   images:

@@ -16,7 +16,9 @@
     cpus: string
     readOnly: boolean
     database: boolean
+    protected: boolean
     env: string
+    takeOver: boolean
   }
 
   interface Props {
@@ -28,9 +30,19 @@
     withName: boolean
     tags?: string[]
     submitLabel: string
+    /** Every app is served at `<name>.<appsDomain>` when the server has one (ADR 0021). */
+    appsDomain?: string
+    /** Spotcraft sets up custom domains' DNS through Cloudflare itself. */
+    dns?: boolean
+    /** Apps can be put behind Cloudflare Access. */
+    access?: boolean
   }
 
-  let { values, errors = {}, deployError, output, withName, tags = [], submitLabel }: Props = $props()
+  let { values, errors = {}, deployError, output, withName, tags = [], submitLabel, appsDomain, dns = false, access = false }: Props = $props()
+
+  // Follows the name field as it's typed, so the default host below is the real one.
+  let name = $derived(values.name)
+  const defaultHost = $derived(appsDomain ? `${name || '<name>'}.${appsDomain}` : undefined)
 
   let submitting = $state(false)
   let suggestions = $state<string[]>([])
@@ -71,7 +83,7 @@
     {#if withName}
       <div class="space-y-2 sm:col-span-2">
         <Label for="name">Name</Label>
-        <Input id="name" name="name" value={values.name} required autocomplete="off" aria-invalid={errors.name ? true : undefined} aria-describedby="name-help" />
+        <Input id="name" name="name" value={values.name} oninput={(event) => (name = event.currentTarget.value.trim())} required autocomplete="off" aria-invalid={errors.name ? true : undefined} aria-describedby="name-help" />
         <p id="name-help" class={['text-xs', errors.name ? 'text-destructive' : 'text-muted-foreground']}>
           {errors.name ?? 'Used for the container and in URLs here. Cannot be changed later.'}
         </p>
@@ -96,12 +108,32 @@
     </div>
 
     <div class="space-y-2">
-      <Label for="domain">Domain</Label>
-      <Input id="domain" name="domain" value={values.domain} required placeholder="example.com" autocomplete="off" aria-invalid={errors.domain ? true : undefined} />
+      <Label for="domain">{defaultHost ? 'Custom domain (optional)' : 'Domain'}</Label>
+      <Input id="domain" name="domain" value={values.domain} required={!defaultHost} placeholder="example.com" autocomplete="off" aria-invalid={errors.domain ? true : undefined} />
       <p class={['text-xs', errors.domain ? 'text-destructive' : 'text-muted-foreground']}>
-        {errors.domain ?? 'Point its DNS at the apps server. www. redirects here.'}
+        {#if errors.domain}
+          {errors.domain}
+        {:else if defaultHost && dns}
+          Always served at <span class="font-mono">{defaultHost}</span>. A domain in your Cloudflare account is set up for you; for any other, the app's page shows the CNAME to add. A root domain also gets a www. redirect.
+        {:else if defaultHost}
+          Always served at <span class="font-mono">{defaultHost}</span>. For your own domain, add a CNAME record pointing at it. A root domain also gets a www. redirect.
+        {:else}
+          Point its DNS at the apps server. A root domain also gets a www. redirect.
+        {/if}
       </p>
     </div>
+
+    {#if dns}
+      <label class="flex items-start gap-3 sm:col-span-2">
+        <input type="checkbox" name="takeOver" checked={values.takeOver} class="mt-1 size-4 accent-foreground" />
+        <span class="text-sm">
+          Take over existing DNS records
+          <span class="block text-xs text-muted-foreground">
+            Replaces the domain's A, AAAA or CNAME records that Spotcraft didn't make, e.g. ones pointing at an old server. Mail and other records stay.
+          </span>
+        </span>
+      </label>
+    {/if}
 
     <div class="space-y-2">
       <Label for="port">Container port</Label>
@@ -143,6 +175,20 @@
         Database
         <span class="block text-xs text-muted-foreground">
           Its own Postgres database on the apps server, given to the app as DATABASE_URL. Turning this off later keeps the data.
+        </span>
+      </span>
+    </label>
+
+    <label class={['flex items-start gap-3 sm:col-span-2', !access && 'opacity-60']}>
+      <input type="checkbox" name="protected" checked={values.protected} disabled={!access} class="mt-1 size-4 accent-foreground" />
+      <span class="text-sm">
+        Require sign-in (Cloudflare Access)
+        <span class="block text-xs text-muted-foreground">
+          {#if access}
+            Visitors get a one-time code by email first; only the owners listed in Cloudflare get in. For staging apps and previews.
+          {:else}
+            Needs Spotcraft behind Cloudflare with an Access policy (infra/cloudflare, access_emails).
+          {/if}
         </span>
       </span>
     </label>
