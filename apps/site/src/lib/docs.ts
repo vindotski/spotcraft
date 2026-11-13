@@ -3,11 +3,14 @@
 import { Marked, type Tokens } from 'marked'
 import { GITHUB_AT_VERSION } from './site.ts'
 
-const raw = import.meta.glob(['../../../../docs/**/*.md', '../../../../CHANGELOG.md'], {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>
+const raw = import.meta.glob(
+  ['../../../../docs/**/*.md', '../../../../CHANGELOG.md', '../../../../packages/kit/CHANGELOG.md'],
+  {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  },
+) as Record<string, string>
 
 /** Repository path (e.g. `docs/security.md`) → Markdown source. */
 const sources = new Map(
@@ -20,6 +23,7 @@ const pageFiles = new Map<string, string>([
   ['security', 'docs/security.md'],
   ['guides/backend-kit', 'docs/guides/backend-kit.md'],
   ['changelog', 'CHANGELOG.md'],
+  ['kit-changelog', 'packages/kit/CHANGELOG.md'],
   ['decisions', 'docs/decisions/README.md'],
 ])
 for (const path of sources.keys()) {
@@ -45,6 +49,7 @@ export const NAV = [
   { slug: 'security', label: 'Security model' },
   { slug: 'decisions', label: 'Decisions' },
   { slug: 'changelog', label: 'Changelog' },
+  { slug: 'kit-changelog', label: 'Kit changelog' },
 ]
 
 export const allSlugs = () => [...pageFiles.keys()]

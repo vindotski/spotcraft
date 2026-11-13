@@ -38,6 +38,11 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Changed
 
+- **`@spotcraft/kit` has its own version** ([ADR 0027](docs/decisions/0027-kit-version.md)) and
+  its own [changelog](packages/kit/CHANGELOG.md), released with `kit-vX.Y.Z` tags; it stays at
+  0.3.0 for now. Spotcraft releases (`vX.Y.Z`) publish the image and the CLI, which pins the
+  kit's exact version, and CI refuses one whose kit isn't on npm or changed since its tag.
+  Apps no longer get a new kit version with every Spotcraft release.
 - **Spotcraft runs on one server** ([ADR 0026](docs/decisions/0026-one-server.md)). The agent,
   the dashboard, Postgres and the monitoring share one Compose stack in `infra/server`, which
   replaces `infra/apps-server` and `infra/ops-server`. Docker networks replace the private

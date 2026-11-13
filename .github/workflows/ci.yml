@@ -1,11 +1,12 @@
 name: CI
 
 # Pull requests: verify, and build the image (not pushed) so a broken Dockerfile shows before
-# merging. main and v* tags: verify, then publish the image to Docker Hub.
+# merging. main and v* tags: verify, then publish the image to Docker Hub; v* tags also publish
+# the CLI. kit-v* tags: verify, then publish @spotcraft/kit alone (ADR 0027).
 on:
   push:
     branches: [main]
-    tags: ["v*.*.*"]
+    tags: ["v*.*.*", "kit-v*.*.*"]
   pull_request:
 
 permissions:
@@ -45,6 +46,33 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # A Spotcraft release ships the kit inside the image (the agent migrates app databases with
+      # it) and pins it in the CLI, so that kit must be the published one: on npm, and its source
+      # unchanged since its kit-v<version> tag (ADR 0027). Read through the GitHub API with the
+      # job's read-only token, since the checkout keeps no git credentials. Forks don't
+      # publish the kit, so only the original repository checks.
+      - name: The kit in this release is published
+        if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          kit="$(jq -r .version packages/kit/package.json)"
+          if ! npm view "@spotcraft/kit@$kit" version > /dev/null 2>&1; then
+            echo "::error::@spotcraft/kit@$kit isn't on npm: release it first (tag kit-v$kit)"
+            exit 1
+          fi
+          # The git tree hash of packages/kit/src at each ref: equal means unchanged.
+          src() { gh api "repos/$REPO/contents/packages/kit?ref=$1" --jq '.[] | select(.name == "src") | .sha'; }
+          if ! tagged="$(src "kit-v$kit")" || [ -z "$tagged" ]; then
+            echo "::error::Can't read packages/kit/src at kit-v$kit: does the tag exist?"
+            exit 1
+          fi
+          if [ "$(src "$SHA")" != "$tagged" ]; then
+            echo "::error::packages/kit/src changed since kit-v$kit: release a new kit version first"
+            exit 1
+          fi
       - run: pnpm check
       - run: pnpm check:versions
       - run: pnpm typecheck
@@ -65,6 +93,8 @@ jobs:
   images:
     name: Image
     needs: verify
+    # A kit release changes nothing in the image.
+    if: ${{ !startsWith(github.ref, 'refs/tags/kit-v') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -150,12 +180,13 @@ jobs:
             "$TRIVY" image --quiet --input /image.tar --ignorefile /.trivyignore.yaml \
             --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 
-  # Release tags only: publishes @spotcraft/kit and the CLI (`spotcraft`) to npm (ADR 0019),
-  # after the same commit passed verify and built its image. Trusted publishing (GitHub
-  # OIDC): no token is stored and provenance is automatic. NPM_TOKEN (environment `npm`) is
-  # only for the very first publish, before a trusted publisher can be linked; delete it after.
+  # Release tags only: publishes the CLI (`spotcraft`) to npm (ADR 0019, ADR 0027), after the
+  # same commit passed verify (including the check that its kit is published) and built its
+  # image. Trusted publishing (GitHub OIDC): no token is stored and provenance is automatic.
+  # NPM_TOKEN (environment `npm`) is only for the very first publish of a package, before a
+  # trusted publisher can be linked; delete it after.
   npm:
-    name: npm packages
+    name: npm (spotcraft)
     needs: [verify, images]
     # Only the original repository publishes these names; forks of the template skip it.
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
@@ -190,24 +221,52 @@ jobs:
             exit 1
           }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @spotcraft/kit --filter spotcraft build
-      # npm doesn't know pnpm's workspace: protocol; the CLI depends on the kit's exact version.
+      - run: pnpm --filter spotcraft build
+      # npm doesn't know pnpm's workspace: protocol; the CLI depends on the kit's exact version,
+      # which verify checked is on npm.
       - run: node scripts/pin-workspace-deps.ts packages/cli
-      - name: Publish (kit first, the CLI depends on it)
+      - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: ./scripts/npm-publish.sh packages/cli
+
+  # kit-v* tags only: publishes @spotcraft/kit alone, at its own version (ADR 0027).
+  kit:
+    name: npm (@spotcraft/kit)
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/kit-v') && github.repository == 'vindotski/spotcraft'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+      - name: Check the tag and npm
+        env:
+          REF: ${{ github.ref }}
         run: |
-          version="$(jq -r .version package.json)"
-          tag=latest
-          case "$version" in *-*) tag=next ;; esac
-          # With a token, ask for provenance explicitly; with OIDC it's automatic.
-          extra=()
-          [ -n "$NODE_AUTH_TOKEN" ] && extra=(--provenance)
-          for dir in packages/kit packages/cli; do
-            name="$(jq -r .name "$dir/package.json")"
-            if npm view "$name@$version" version > /dev/null 2>&1; then
-              echo "$name@$version is already on npm; skipping"
-              continue
-            fi
-            (cd "$dir" && npm publish --access public --tag "$tag" "${extra[@]}")
-          done
+          tag="${REF#refs/tags/kit-v}"
+          version="$(jq -r .version packages/kit/package.json)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag kit-v$tag doesn't match packages/kit/package.json version $version"
+            exit 1
+          fi
+          npx --yes semver@7.7.3 -r '>=11.5.1' "$(npm --version)" > /dev/null || {
+            echo "::error::npm $(npm --version) is too old for trusted publishing"
+            exit 1
+          }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @spotcraft/kit build
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: ./scripts/npm-publish.sh packages/kit

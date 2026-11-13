@@ -1,6 +1,6 @@
 ---
 name: release
-description: Prepare a Spotcraft release — version bump, changelog, release PR to main, tag instructions and what CI then publishes. Use when the user asks to cut, prepare or check a release, or to bump the version.
+description: Prepare a Spotcraft or @spotcraft/kit release — version bump, changelog, release PR to main, tag instructions and what CI then publishes. Use when the user asks to cut, prepare or check a release, or to bump a version.
 ---
 
 # Release
@@ -20,7 +20,11 @@ first, they win over this skill. The user merges, tags and pushes; you prepare a
 
 ## Prepare (on a `release/X.Y.Z` branch from `dev`)
 
-1. `node scripts/check-versions.ts X.Y.Z` sets every workspace package; `pnpm check:versions`
+0. If `packages/kit/src` changed since the kit's last `kit-v` tag, release the kit first
+   (`docs/releasing.md`, "A kit release"): `node scripts/check-versions.ts --kit A.B.C`, its own
+   `packages/kit/CHANGELOG.md`, tag `kit-vA.B.C`. CI refuses a Spotcraft tag whose kit isn't
+   published.
+1. `node scripts/check-versions.ts X.Y.Z` sets every workspace package but the kit; `pnpm check:versions`
    confirms.
 2. In `CHANGELOG.md`, rename `Unreleased` to `[X.Y.Z] - YYYY-MM-DD`, add a fresh empty
    `Unreleased`, and add the compare links at the bottom.
@@ -31,7 +35,7 @@ first, they win over this skill. The user merges, tags and pushes; you prepare a
 ## The user then
 
 ```bash
-git tag -s vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z
+git tag -s vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z   # kit: kit-vA.B.C
 ```
 
 CI verifies the tagged commit and publishes the `spotcraft` image (`X.Y.Z`, `X.Y`) and the npm packages.

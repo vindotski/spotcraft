@@ -11,9 +11,17 @@ kit into `node_modules`, like the agent's image, uses the build: `pnpm --filter 
 build` writes JavaScript, type declarations and the migrations to `dist/`.
 
 ```bash
-npm install @spotcraft/kit                  # same version as the Spotcraft you deploy to
+npm install @spotcraft/kit                  # see "Versions" below
 npm install --save-dev spotcraft            # the local stack: npx spotcraft dev start
 ```
+
+## Versions
+
+The kit has its own version and [changelog](CHANGELOG.md), separate from Spotcraft's
+([ADR 0027](../../docs/decisions/0027-kit-version.md)). What it needs from the server is its
+`auth` schema: Spotcraft migrates every app database with the kit it ships, and this kit checks
+on first use that the schema is at least `AUTH_SCHEMA_VERSION`. A kit release that raises it says
+in the changelog which Spotcraft version it needs; upgrade Spotcraft first, then the kit.
 
 The step-by-step guide for a SvelteKit app, locally and deployed, is
 [Guest accounts with the backend kit](https://github.com/vindotski/spotcraft/blob/main/docs/guides/backend-kit.md).
