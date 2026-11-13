@@ -20,7 +20,11 @@ export interface AppFormValues {
   cpus: string
   readOnly: boolean
   database: boolean
+  /** Behind Cloudflare Access (ADR 0021). */
+  protected: boolean
   env: string
+  /** Replace the custom domain's existing DNS records; not part of the app's settings. */
+  takeOver: boolean
 }
 
 export type AppFormErrors = Partial<Record<keyof AppFormValues, string>>
@@ -36,7 +40,11 @@ export function envToText(env: Record<string, string>): string {
 /** Reads and validates the app form with the agent's own rules, so errors show before deploying. */
 export function parseAppForm(
   data: FormData,
-  options: { withName: boolean },
+  options: {
+    withName: boolean
+    /** Without an apps domain, an app needs a domain of its own. */
+    domainRequired: boolean
+  },
 ): { values: AppFormValues; errors: AppFormErrors; input?: AppInput } {
   const text = (key: string) => String(data.get(key) ?? '').trim()
   const values: AppFormValues = {
@@ -49,7 +57,9 @@ export function parseAppForm(
     cpus: text('cpus') || '1',
     readOnly: data.get('readOnly') === 'on',
     database: data.get('database') === 'on',
+    protected: data.get('protected') === 'on',
     env: String(data.get('env') ?? ''),
+    takeOver: data.get('takeOver') === 'on',
   }
   const errors: AppFormErrors = {}
 
@@ -63,7 +73,7 @@ export function parseAppForm(
   }
   if (!matches(IMAGE, values.image)) errors.image = 'A repository like vindotski/tagtape.'
   if (!matches(TAG, values.tag)) errors.tag = 'A tag like 2.0.0 or latest.'
-  if (!matches(DOMAIN, values.domain))
+  if (values.domain ? !matches(DOMAIN, values.domain) : options.domainRequired)
     errors.domain = 'A domain like example.com, without https://.'
   const port = Number(values.port)
   if (!Number.isInteger(port) || port < 1 || port > 65535)
@@ -95,12 +105,13 @@ export function parseAppForm(
     input: {
       image: values.image,
       tag: values.tag,
-      domain: values.domain,
+      ...(values.domain ? { domain: values.domain } : {}),
       port,
       memory: values.memory,
       cpus,
       readOnly: values.readOnly,
       database: values.database,
+      protected: values.protected,
       env,
     },
   }

@@ -1,6 +1,6 @@
 {
   "name": "spotcraft",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Self-hosted deployment for a handful of web apps on two VPSes: Docker images behind HTTPS, monitored, managed from one dashboard.",
   "private": true,
   "license": "Apache-2.0",
@@ -25,7 +25,7 @@
     "check:versions": "node scripts/check-versions.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.5",
+    "@biomejs/biome": "2.6.7",
     "@sveltejs/mcp": "^0.1.30",
     "@types/node": "catalog:",
     "typescript": "catalog:"

@@ -10,6 +10,49 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-13
+
+An address for every app, and Spotcraft behind Cloudflare if you want it
+([ADR 0021](docs/decisions/0021-cloudflare-edge.md)). Nothing changes until you set the new
+settings.
+
+### Added
+
+- **Default subdomains**: with the `APPS_DOMAIN` variable, every app is served at
+  `<name>.<APPS_DOMAIN>`; the app's `domain` becomes an optional custom domain. The agent has
+  `GET /settings`, and every app lists its `hostnames`.
+- **`infra/cloudflare`**, an OpenTofu module: Cloudflare Tunnels for both servers, the wildcard
+  and dashboard records, zone TLS settings, bot switches, a rate limit on `/login`, Access in
+  front of the dashboard, and Cloudflare for SaaS for custom domains outside the account.
+- **Tunnel mode** (`EDGE=cloudflare` with the `CLOUDFLARE_TUNNEL_TOKEN_APPS` and `_OPS` secrets):
+  `cloudflared` runs on both servers, Caddy is published on loopback only, and the dashboard and
+  apps are served over plain HTTP to the tunnel. `infra/hetzner` gains `edge = "cloudflare"` to
+  close ports 80 and 443.
+- **Custom domains through Cloudflare**: with the agent's `CLOUDFLARE_*` settings, a domain in the
+  account gets a proxied CNAME to the tunnel, and any other domain a custom hostname. The dashboard
+  shows each domain's status and the records still to add. `PUT /apps/:name?takeOver=true` replaces
+  records Spotcraft didn't make.
+- **Require sign-in**: `protected: true` puts an app behind Cloudflare Access with the owners'
+  policy (`CLOUDFLARE_ACCESS_POLICY_ID`). Its uptime probe expects the Access sign-in redirect.
+
+### Changed
+
+- Caddy passes each visitor's address to apps and the dashboard as `X-Forwarded-For`, and trusts
+  `CF-Connecting-IP` only from `CADDY_TRUSTED_PROXIES` (loopback unless behind the tunnel).
+- The ops server gets `blackbox.yml` with the probe modules; the Deploy workflow copies it.
+- The Deploy workflow's final check also accepts a redirect to Cloudflare Access.
+- When the agent starts, it rewrites every app's Caddy site for the current `EDGE` and
+  `APPS_DOMAIN` (protecting a protected app's new hosts first), so a mode switch reaches every
+  app without redeploying each one.
+- A failed deploy puts the domain's DNS back exactly as it was, including records a take-over
+  replaced.
+- An app's uptime averages all of its addresses, and "Reachable now" needs every address up.
+- `dev` is now the default branch; `main` holds the released version. The `latest` image tag is
+  published from `main`.
+- Dependencies: Caddy 2.11.9, VictoriaMetrics and vmagent v1.156.0, Node 26.13.1 and refreshed
+  distroless images, SvelteKit 3.2, better-auth 1.7.21, `@types/node` 26 (matching Node 26).
+  TypeScript stays on 6 until `svelte-check` supports 7.
+
 ## [0.2.0] - 2026-11-08
 
 Databases for hosted apps, and a backend kit that gives server-rendered apps guest accounts:
@@ -92,6 +135,7 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vindotski/spotcraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.1.0

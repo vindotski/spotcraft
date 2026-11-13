@@ -5,6 +5,7 @@ Hosts the apps. Runs from `/opt/spotcraft` with Docker Compose.
 | Service         | Reachable from        | Purpose                                 |
 | --------------- | --------------------- | --------------------------------------- |
 | `caddy`         | public 80/443         | HTTPS + reverse proxy to each app       |
+| `cloudflared`   | outbound only         | with `EDGE=cloudflare`: the tunnel      |
 | `agent`         | private network :4000 | deploys apps on the dashboard's request |
 | `node-exporter` | private network :9100 | host metrics                            |
 | `cadvisor`      | private network :8080 | per-container metrics                   |
@@ -19,6 +20,17 @@ Every service runs without Linux capabilities (Caddy keeps `NET_BIND_SERVICE`), 
 `no-new-privileges`, a read-only root filesystem, and memory and process limits; Caddy and
 the exporters have health checks. The `spotcraft-edge` network has IPv6 on, so Caddy sees
 IPv6 visitors' real addresses. The agent only answers the ops server (`OPS_PRIVATE_IP`).
+
+Caddy passes each visitor's address to the apps as `X-Forwarded-For`. It trusts
+`CF-Connecting-IP` only from `CADDY_TRUSTED_PROXIES` (loopback by default; `private_ranges`
+behind a Cloudflare Tunnel, ADR 0021). With `APPS_DOMAIN` in `.env`, the agent serves every app
+at `<name>.<APPS_DOMAIN>`; point a wildcard record at this server.
+
+Behind Cloudflare (`EDGE=cloudflare`, ADR 0021), the deploy adds to `.env`:
+`COMPOSE_PROFILES=cloudflare` (starts `cloudflared` with `CLOUDFLARE_TUNNEL_TOKEN`),
+`PUBLIC_BIND=127.0.0.1` (Caddy's ports only on loopback) and `CADDY_TRUSTED_PROXIES=private_ranges`.
+The agent then writes plain-HTTP site blocks; Cloudflare holds the certificates. `cloudflared`
+reaches Caddy on the `spotcraft-edge` network and is healthy once the tunnel is connected.
 
 cAdvisor gets the Docker and containerd sockets (read-only) to name containers and read their
 Compose labels; the dashboard finds each app's metrics by `com.docker.compose.project`.

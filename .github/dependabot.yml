@@ -8,6 +8,11 @@ updates:
     cooldown: { default-days: 1 }
     groups:
       npm: { patterns: ["*"] }
+    # svelte-check can't run on TypeScript 7 alone yet (it needs 6 alongside and --tsgo);
+    # take minor and patch updates of 6 until it can.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -31,6 +36,6 @@ updates:
       server-images: { patterns: ["*"] }
 
   - package-ecosystem: terraform
-    directory: /infra/hetzner
+    directories: [/infra/hetzner, /infra/cloudflare]
     schedule: { interval: weekly }
     cooldown: { default-days: 1 }

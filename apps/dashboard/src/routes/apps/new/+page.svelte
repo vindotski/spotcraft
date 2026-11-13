@@ -2,9 +2,9 @@
   import AppForm from '#lib/components/AppForm.svelte'
   import type { PageProps } from './$types'
 
-  let { form }: PageProps = $props()
+  let { data, form }: PageProps = $props()
 
-  const empty = { name: '', image: '', tag: '', domain: '', port: '3000', memory: '512m', cpus: '1', readOnly: true, database: false, env: '' }
+  const empty = { name: '', image: '', tag: '', domain: '', port: '3000', memory: '512m', cpus: '1', readOnly: true, database: false, protected: false, env: '', takeOver: false }
 </script>
 
 <svelte:head><title>Add app · Spotcraft</title></svelte:head>
@@ -19,4 +19,7 @@
   output={form?.output ?? undefined}
   withName
   submitLabel="Deploy"
+  appsDomain={data.appsDomain}
+  dns={data.dns}
+  access={data.access}
 />

@@ -18,37 +18,83 @@ The files it writes are the only record of which apps exist:
 | Method | Path                    | What                                                       |
 | ------ | ----------------------- | ---------------------------------------------------------- |
 | GET    | `/health`               | `{ ok: true }`, no token needed                            |
-| GET    | `/apps`                 | every app's settings plus `state`, `health`, `status`      |
+| GET    | `/settings`             | `{ appsDomain?, edge, dns, access }`: what is set up       |
+| GET    | `/apps`                 | settings plus `state`, `health`, `status`, `hostnames`     |
 | GET    | `/apps/:name`           | one app, or 404                                            |
 | PUT    | `/apps/:name`           | create or update, then deploy; returns the app with status |
+|        |                         | `?takeOver=true` replaces a custom domain's DNS records    |
 | DELETE | `/apps/:name`           | stop and remove the app and its site; 204, or 404          |
 |        |                         | `?purge=true` also deletes its database and role           |
+| GET    | `/apps/:name/domain`    | custom domain status and records still to create           |
 | GET    | `/apps/:name/logs`      | last `?tail=` lines (default 200, max 5000), plain text    |
 | GET    | `/apps/:name/users`     | the app's users, newest first (`?limit=`, `?cursor=`)      |
 | DELETE | `/apps/:name/users/:id` | delete a user and what the app kept for them; 204, or 404  |
 
 `PUT` body (unknown fields are rejected):
 
-| Field      | Default | Rule                                                      |
-| ---------- | ------- | --------------------------------------------------------- |
-| `image`    | —       | repository, e.g. `vindotski/tagtape` or `ghcr.io/org/app` |
-| `tag`      | —       | Docker tag, e.g. `2.0.0`                                  |
-| `domain`   | —       | lower-case domain; `www.` redirects to it                 |
-| `port`     | `3000`  | port the app listens on inside its container              |
-| `env`      | `{}`    | environment variables (`$` is kept literal)               |
-| `memory`   | `512m`  | memory limit, `<n>m` or `<n>g`                            |
-| `cpus`     | `1`     | CPU limit                                                 |
-| `readOnly` | `true`  | read-only root filesystem with a 64 MB writable `/tmp`    |
-| `database` | `false` | its own Postgres database, given to it as `DATABASE_URL`  |
+| Field       | Default | Rule                                                      |
+| ----------- | ------- | --------------------------------------------------------- |
+| `image`     | —       | repository, e.g. `vindotski/tagtape` or `ghcr.io/org/app` |
+| `tag`       | —       | Docker tag, e.g. `2.0.0`                                  |
+| `domain`    | —       | custom domain; required only without `APPS_DOMAIN`        |
+| `port`      | `3000`  | port the app listens on inside its container              |
+| `env`       | `{}`    | environment variables (`$` is kept literal)               |
+| `memory`    | `512m`  | memory limit, `<n>m` or `<n>g`                            |
+| `cpus`      | `1`     | CPU limit                                                 |
+| `readOnly`  | `true`  | read-only root filesystem with a 64 MB writable `/tmp`    |
+| `database`  | `false` | its own Postgres database, given to it as `DATABASE_URL`  |
+| `protected` | `false` | behind Cloudflare Access (needs an Access policy)         |
 
 App names: lower-case letters, digits and dashes, 2–32 characters; `caddy`, `agent`,
-`node-exporter`, `cadvisor` and `postgres` are reserved. A domain can belong to one app only.
+`node-exporter`, `cadvisor`, `postgres`, `www` and `fallback` are reserved. A host can belong
+to one app only: a custom domain can't be another app's default host.
 
-Leaving out `database` in an update keeps the app's current setting (a new app gets none), so
+With `APPS_DOMAIN` set, every app is served at `<name>.<APPS_DOMAIN>` (its default host,
+first in `hostnames`) and, if it has one, at its custom domain too (ADR 0021).
+
+Leaving out `database` or `protected` in an update keeps the app's current setting (a new app gets none), so
 an older dashboard never takes a database away. With `database: true`, the app can't set
 `DATABASE_URL` itself; without it, it may point `DATABASE_URL` anywhere.
 
+## Custom domains through Cloudflare
+
+With `EDGE=cloudflare`, `APPS_DOMAIN` and all four of `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_APPS_ZONE_ID` and `CLOUDFLARE_TUNNEL_ID` (from
+`infra/cloudflare`), the agent sets up each app's custom domain itself (ADR 0021). Set without
+`EDGE=cloudflare` and `APPS_DOMAIN` (for example ahead of a switch), they are ignored and the
+agent logs a notice at startup. A root domain
+also gets `www.`.
+
+- **The domain's zone is in the account**: the agent creates a proxied CNAME to the apps tunnel,
+  with the comment `spotcraft:<name>`. It refuses (409) if the host already has A, AAAA or CNAME
+  records it didn't make, unless the deploy says `?takeOver=true`. Other records such as MX and
+  TXT are never touched.
+- **Any other domain**: the agent creates a Cloudflare for SaaS custom hostname on the apps zone.
+  Its owner adds a CNAME to `<name>.<APPS_DOMAIN>`, plus any TXT records `GET /apps/:name/domain`
+  lists. Cloudflare then verifies the domain and issues its certificate.
+
+DNS is set up before anything else in a deploy, and every host is checked before any is
+changed. If the deploy then fails, or Cloudflare fails partway, DNS is put back exactly as it
+was, including records a take-over replaced. No host may belong to two apps, including the
+`www.` a root domain redirects. When the domain changes,
+the old one's records go once the new version runs. Removing the app removes its records and
+custom hostnames. Without these settings, `GET /apps/:name/domain` only says which records to
+create by hand.
+
+With `CLOUDFLARE_ACCESS_POLICY_ID` too (the owners' policy from `infra/cloudflare`), an app with
+`protected: true` gets a Cloudflare Access application named `spotcraft:<name>` that covers every
+host it answers on. Visitors sign in with a one-time code first. Protection goes on before the new
+version takes traffic. If the deploy fails, the previous protection is put back, and removing
+the app removes the Access application. Without the policy, `protected: true` returns 409.
+
 ## Deploying
+
+Each app's Caddy site depends on `EDGE` and `APPS_DOMAIN`. When the agent starts, it rewrites
+any site that doesn't match them and reloads Caddy (retrying while Caddy starts), so switching
+modes applies to every app at once. A protected app's new hosts go behind Access first, next to its old ones,
+and only once Caddy runs the new sites does Access drop the old hosts. If
+Caddy rejects the rewrite, the previous sites are put back. An app left without any address
+(no `APPS_DOMAIN` and no domain of its own) gets no site until it has one.
 
 `PUT` writes the files, then runs `docker compose pull`, `docker compose up -d --wait`
 (waits up to 120 s for the container to run, and to be healthy if the image has a healthcheck)
@@ -56,8 +102,11 @@ and reloads Caddy. If any step fails, the previous version's files are restored 
 again (a new app is removed), and the response carries the error and the command output.
 Changes run one at a time.
 
-A `www.` site redirecting to the domain is added only for root domains (two labels, e.g.
-`tagtape.app`); subdomains get none, so Caddy never requests certificates for unused names.
+A `www.` site redirecting to the custom domain is added only for root domains (two labels,
+e.g. `tagtape.app`); subdomains get none, so Caddy never requests certificates for unused names.
+Caddy passes the visitor's address to the app as `X-Forwarded-For`. With `EDGE=cloudflare`,
+site blocks are plain HTTP (`http://host`): Cloudflare terminates TLS and a tunnel delivers
+requests to Caddy.
 
 Every app container gets: no Linux capabilities, `no-new-privileges`, memory/CPU/pids
 limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy reaches it as
@@ -108,6 +157,9 @@ while the app is down.
 | `DATA_DIR`        | `/opt/spotcraft`         | holds `apps/` and `sites/`            |
 | `CADDY_CONTAINER` | `spotcraft-apps-caddy-1` | container reloaded after site changes |
 | `POSTGRES_URL`    | —                        | the agent's Postgres role (optional)  |
+| `APPS_DOMAIN`     | —                        | apps get `<name>.<APPS_DOMAIN>`       |
+| `EDGE`            | `direct`                 | `cloudflare`: sites are plain HTTP    |
+| `CLOUDFLARE_*`    | —                        | custom domains, Access (see below)    |
 | `LOG_LEVEL`       | `info`                   | log level                             |
 
 The image is distroless Node 26 (no shell or package manager) plus the static Docker CLI and

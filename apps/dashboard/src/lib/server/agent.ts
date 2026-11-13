@@ -1,8 +1,8 @@
-import type { AppBody, AppSpec } from '@spotcraft/agent/app-spec'
+import type { AgentSettings, AppBody, AppSpec, DomainStatus } from '@spotcraft/agent/app-spec'
 import type { AppStatus, UserPage } from '@spotcraft/agent/apps'
 import { AGENT_TOKEN, AGENT_URL } from '$app/env/private'
 
-export type { AppSpec, AppStatus, UserPage }
+export type { AgentSettings, AppSpec, AppStatus, DomainStatus, UserPage }
 export type AppInput = AppBody
 
 export class AgentUnavailable extends Error {}
@@ -33,6 +33,11 @@ async function expectJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>
 }
 
+/** What apps are served under: the apps domain (if any) and whether Cloudflare is in front. */
+export async function getSettings(): Promise<AgentSettings> {
+  return expectJson<AgentSettings>(await call('/settings'))
+}
+
 export async function listApps(): Promise<AppStatus[]> {
   return (await expectJson<{ apps: AppStatus[] }>(await call('/apps'))).apps
 }
@@ -47,9 +52,11 @@ export async function getApp(name: string): Promise<AppStatus | undefined> {
 export async function deployApp(
   name: string,
   input: AppInput,
+  /** Replace the custom domain's existing DNS records (ADR 0021). */
+  { takeOver = false } = {},
 ): Promise<{ ok: true; app: AppStatus } | ({ ok: false } & DeployFailure)> {
   const response = await call(
-    `/apps/${name}`,
+    `/apps/${name}${takeOver ? '?takeOver=true' : ''}`,
     { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) },
     300_000,
   )
@@ -81,6 +88,13 @@ export async function deleteUser(name: string, id: string): Promise<boolean> {
   if (response.status === 404) return false
   if (!response.ok) await expectJson(response) // throws with the agent's message
   return true
+}
+
+/** Where the app's custom domain stands; undefined if the agent can't say. */
+export async function getDomainStatus(name: string): Promise<DomainStatus | undefined> {
+  const response = await call(`/apps/${name}/domain`, {}, 30_000)
+  if (!response.ok) return undefined
+  return (await response.json()) as DomainStatus
 }
 
 export async function appLogs(name: string, tail = 200): Promise<string> {

@@ -9,8 +9,9 @@ scrape_configs:
   - job_name: cadvisor
     static_configs:
       - targets: ["%{APPS_PRIVATE_IP}:8080"]
-  # Uptime probes of each hosted app's public URL. The dashboard writes the targets
-  # (one per app, labelled app=<name>) whenever the app list changes.
+  # Uptime probes of each hosted app's public URLs. The dashboard writes the targets
+  # (labelled app=<name>) whenever the app list changes; a protected app's targets also
+  # carry module=http_access (blackbox.yml).
   - job_name: probes
     scrape_interval: 30s
     metrics_path: /probe
@@ -19,6 +20,9 @@ scrape_configs:
     file_sd_configs:
       - files: [/probes/probes.json]
     relabel_configs:
+      - source_labels: [module]
+        regex: (.+)
+        target_label: __param_module
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
