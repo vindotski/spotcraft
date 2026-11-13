@@ -50,7 +50,8 @@ optional() {
 require SPOTCRAFT_TAG IMAGE_NAMESPACE AGENT_TOKEN
 
 # Behind a Cloudflare Tunnel, cloudflared runs (its Compose profile), Caddy is only published
-# on loopback and serves plain HTTP, and it trusts the visitor's address from cloudflared.
+# on loopback and serves plain HTTP, it trusts the visitor's address from cloudflared only, and
+# only cloudflared may reach the dashboard.
 EDGE="${EDGE:-direct}"
 case "$EDGE" in
   direct)
@@ -59,10 +60,12 @@ case "$EDGE" in
     ;;
   cloudflare)
     require CLOUDFLARE_TUNNEL_TOKEN
+    # 10.255.254.2: cloudflared's fixed address on the `web` network (compose.yaml).
     EDGE_ENV="COMPOSE_PROFILES=cloudflare
 CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN
 PUBLIC_BIND=127.0.0.1
-CADDY_TRUSTED_PROXIES=private_ranges"
+CADDY_TRUSTED_PROXIES=10.255.254.2/32
+DASHBOARD_PEERS=10.255.254.2/32"
     ;;
   *)
     echo "::error::EDGE must be direct or cloudflare" >&2

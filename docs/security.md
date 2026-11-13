@@ -21,8 +21,10 @@ protects, what it trusts, and the risks it accepts. Report vulnerabilities as de
 Hetzner's cloud firewall and ufw on the server. Behind Cloudflare (`EDGE=cloudflare`, ADR 0021),
 HTTP and HTTPS are closed too: `cloudflared` dials out to Cloudflare, Caddy is published on
 loopback only, and visitors meet Cloudflare's TLS, WAF and DDoS protection first. Caddy then
-trusts the visitor's address in `CF-Connecting-IP` from private addresses only; in direct mode
-it trusts no such header. SSH accepts only keys, only for `deploy`, with modern algorithms
+trusts the visitor's address in `CF-Connecting-IP` from cloudflared's fixed address only, and
+the dashboard's site answers only cloudflared, so nothing on the server's own networks (a
+hosted app, say) gets around Access or forges an address; in direct mode Caddy trusts no such
+header. SSH accepts only keys, only for `deploy`, with modern algorithms
 only. Everything else (the agent, the dashboard, Postgres, exporters, metrics, Caddy's admin API) is
 reachable only on Docker networks.
 

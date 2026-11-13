@@ -4,10 +4,10 @@
 # where Cloudflare holds the certificates.
 {
 	servers {
-		# Behind a Cloudflare Tunnel (EDGE=cloudflare) requests come from cloudflared on a private
-		# address and carry the visitor's address in CF-Connecting-IP; the deploy then sets
-		# CADDY_TRUSTED_PROXIES=private_ranges. Otherwise only loopback is trusted, so a visitor
-		# can't claim another address with the header (ADR 0021).
+		# Behind a Cloudflare Tunnel (EDGE=cloudflare) requests come from cloudflared, at its fixed
+		# address on the `web` network, and carry the visitor's address in CF-Connecting-IP; the
+		# deploy then sets CADDY_TRUSTED_PROXIES to that address only. Hosted apps reach Caddy too
+		# (on `edge`) and must not be able to claim an address. Otherwise only loopback is trusted.
 		trusted_proxies static {$CADDY_TRUSTED_PROXIES:127.0.0.1/32}
 		client_ip_headers CF-Connecting-IP
 		# Slow clients can't hold connections open.
@@ -20,6 +20,12 @@
 }
 
 {$DASHBOARD_SCHEME}{$DASHBOARD_DOMAIN} {
+	# Behind a Cloudflare Tunnel, only cloudflared may reach the dashboard (DASHBOARD_PEERS);
+	# anything else, such as a hosted app on the shared edge network, would get past Cloudflare
+	# Access, the WAF and the login rate limit. In direct mode everyone may, as on the internet.
+	@notPeer not remote_ip {$DASHBOARD_PEERS}
+	respond @notPeer 403
+
 	encode zstd gzip
 
 	# The dashboard only takes forms (logins, app settings).

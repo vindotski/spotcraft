@@ -34,8 +34,13 @@ services:
       - "${PUBLIC_BIND:-0.0.0.0}:443:443"
       - "${PUBLIC_BIND:-0.0.0.0}:443:443/udp" # HTTP/3
     environment:
-      CADDY_TRUSTED_PROXIES: ${CADDY_TRUSTED_PROXIES:-127.0.0.1/32} # private_ranges behind Cloudflare
+      # Behind Cloudflare, cloudflared's fixed address (below): the only peer whose
+      # CF-Connecting-IP is believed. Hosted apps also reach Caddy, on `edge`, and must not.
+      CADDY_TRUSTED_PROXIES: ${CADDY_TRUSTED_PROXIES:-127.0.0.1/32}
       DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?set DASHBOARD_DOMAIN in .env}
+      # Who may reach the dashboard's site: anyone in direct mode; only cloudflared behind a
+      # tunnel, so nothing (hosted apps included) gets past Cloudflare Access and the WAF.
+      DASHBOARD_PEERS: ${DASHBOARD_PEERS:-0.0.0.0/0 ::/0}
       # http:// behind a Cloudflare Tunnel: Cloudflare holds the certificate.
       DASHBOARD_SCHEME: ${DASHBOARD_SCHEME:-}
     volumes:
@@ -43,8 +48,8 @@ services:
       - ./sites:/etc/caddy/sites:ro # one file per app, written by the agent
       - caddy_data:/data # certificates: keep across redeploys
       - caddy_config:/config
-    # `edge` carries the published ports (as before the merge), so IPv6 visitors keep their
-    # real addresses; `web` reaches the dashboard.
+    # `edge` carries the published ports (IPv6 on, so IPv6 visitors keep their real addresses);
+    # `web` reaches the dashboard and is where cloudflared comes from.
     networks:
       edge:
         gw_priority: 1
@@ -68,7 +73,10 @@ services:
     mem_limit: 128m
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-} # required with the profile; the deploy checks it
-    networks: [web]
+    # A fixed address: Caddy trusts CF-Connecting-IP from it, and from nothing else.
+    networks:
+      web:
+        ipv4_address: 10.255.254.2
     healthcheck:
       test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
       interval: 30s
@@ -100,6 +108,8 @@ services:
       CADDY_CONTAINER: spotcraft-apps-caddy-1
       # Every app is also served at <name>.<APPS_DOMAIN> (ADR 0021); empty turns that off.
       APPS_DOMAIN: ${APPS_DOMAIN:-}
+      # Served by the same Caddy: no app may take this host (ADR 0026).
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN}
       # cloudflare: site blocks are plain HTTP, the tunnel brings requests to Caddy (ADR 0021).
       EDGE: ${EDGE:-direct}
       # Optional, all four together: custom domains' DNS through the Cloudflare API.
@@ -326,16 +336,24 @@ networks:
   edge:
     name: spotcraft-edge
     enable_ipv6: true
-  # Caddy, the dashboard and the monitoring; IPv6 on, like `edge`.
+  # Caddy, cloudflared, the dashboard and the monitoring. IPv4 only, with a fixed subnet outside
+  # Docker's default pools, so cloudflared has a known address (visitors' IPv6 addresses arrive
+  # through `edge`, which carries Caddy's published ports). Other services get addresses from
+  # `ip_range` only, so none can take cloudflared's before it starts.
   web:
-    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 10.255.254.0/27
+          ip_range: 10.255.254.16/28
   # The dashboard and the agent only, no route out. A fixed subnet outside Docker's default
-  # pools, so the agent can allow exactly the dashboard's address.
+  # pools, so the agent can allow exactly the dashboard's address; the agent's own address comes
+  # from `ip_range`, so it can never take the dashboard's.
   control:
     internal: true
     ipam:
       config:
         - subnet: 10.255.255.0/29
+          ip_range: 10.255.255.4/30
   # Postgres and the agent only; no route out.
   db:
     internal: true
