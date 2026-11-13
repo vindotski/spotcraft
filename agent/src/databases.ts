@@ -15,7 +15,7 @@ function decodeCursor(cursor: string): [string, string] {
 }
 
 /**
- * App databases on the apps server's Postgres, managed as the agent's role (`adminUrl`, e.g.
+ * App databases on the server's Postgres, managed as the agent's role (`adminUrl`, e.g.
  * `postgres://spotcraft_agent:…@postgres:5432/postgres`). Apps reach the same server by the
  * same host name, on the network they share with it.
  */

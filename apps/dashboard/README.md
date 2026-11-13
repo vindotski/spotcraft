@@ -1,7 +1,7 @@
 # @spotcraft/dashboard
 
-SvelteKit app (adapter-node) on the **ops server**. One admin logs in with a password,
-then manages the apps on the apps server through the agent and reads metrics from
+SvelteKit app (adapter-node) on the Spotcraft server. One admin logs in with a password (or
+through Cloudflare Access), then manages the apps through the agent and reads metrics from
 VictoriaMetrics. It has no database: the agent's files are the app list.
 
 ## Screens
@@ -14,9 +14,9 @@ VictoriaMetrics. It has no database: the agent's files are the app list.
 | `/apps/:name`       | status, reachability, uptime, CPU, memory, response time, settings, domain status, logs; Edit, Redeploy, Remove |
 | `/apps/:name/users` | an app's users (guests and registered), newest first; delete one with a confirmation                            |
 | `/apps/:name/edit`  | change settings and deploy                                                                                      |
-| `/server`           | apps server CPU, memory, disk, load, uptime                                                                     |
+| `/server`           | the server's CPU, memory, disk, load, uptime                                                                    |
 
-**Database** gives the app its own Postgres database on the apps server, as `DATABASE_URL`
+**Database** gives the app its own Postgres database on the server, as `DATABASE_URL`
 ([ADR 0015](../../docs/decisions/0015-shared-postgres.md)). The form refuses an own
 `DATABASE_URL` while it is ticked. Removing such an app keeps its database unless "Also delete
 its database" is ticked in the Remove dialog. If that delete fails after the app is gone, the

@@ -61,7 +61,7 @@ function withStatus(
 }
 
 /**
- * App databases on the apps server's Postgres (ADR 0015). Kept behind this interface so
+ * App databases on the server's Postgres (ADR 0015). Kept behind this interface so
  * this module (which the dashboard imports for its types) doesn't load the database code.
  */
 export interface Databases {
@@ -324,7 +324,7 @@ export class Apps {
         records: [
           target && edge === 'cloudflare'
             ? { type: 'CNAME', name: host, value: target }
-            : { type: 'A/AAAA', name: host, value: 'the apps server' },
+            : { type: 'A/AAAA', name: host, value: 'the server' },
         ],
       })),
     }

@@ -16,7 +16,7 @@ const required =
 
 export const variables = defineEnvVars({
   AGENT_URL: {
-    description: 'Agent on the apps server, e.g. http://10.0.0.2:4000',
+    description: 'The agent, e.g. http://agent:4000',
     schema: required('AGENT_URL'),
   },
   AGENT_TOKEN: {

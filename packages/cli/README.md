@@ -1,7 +1,7 @@
 # spotcraft
 
 The `spotcraft` command. For now it has one job: `spotcraft dev` runs, on your machine, the same
-Postgres and app database setup an app gets on a Spotcraft apps server
+Postgres and app database setup an app gets on a Spotcraft server
 ([ADR 0017](https://github.com/vindotski/spotcraft/blob/main/docs/decisions/0017-local-stack.md)). It needs Docker.
 
 ```bash
@@ -30,7 +30,7 @@ The app name comes from `--name`, or from the `name` in `package.json` made into
   the data in the `spotcraft-dev_data` volume. Each app gets its own role and database,
   created with the kit's `provision`, the same code the agent uses. So one app can't open
   another's database here either.
-- **The same image and login rules** as the apps server: the pinned Postgres image, and the
+- **The same image and login rules** as the server: the pinned Postgres image, and the
   superuser only over the container's socket. **The same admin role**: `spotcraft_agent`, set up
   with the deploy script's SQL. Tests fail if the CLI's copies of the image, the rules or that
   SQL drift from `infra/`.

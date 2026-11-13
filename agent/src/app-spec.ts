@@ -15,7 +15,7 @@ export interface AppSpec {
   cpus: number
   /** Read-only root filesystem (with a small writable /tmp). */
   readOnly: boolean
-  /** Its own Postgres role and database on the apps server, given to it as DATABASE_URL. */
+  /** Its own Postgres role and database on the server, given to it as DATABASE_URL. */
   database: boolean
   /** Behind Cloudflare Access: visitors sign in as one of the owners first (ADR 0021). */
   protected?: boolean
@@ -37,7 +37,7 @@ export const ENV_KEY = '^[A-Za-z_][A-Za-z0-9_]*$'
 export const MEMORY = '^[1-9][0-9]{0,5}[mg]$'
 
 /**
- * Names an app can't take: the apps server's own services use them, or (as `<name>.<APPS_DOMAIN>`)
+ * Names an app can't take: the server's own services use them, or (as `<name>.<APPS_DOMAIN>`)
  * they would clash with hosts the apps domain keeps for itself (ADR 0021).
  */
 export const RESERVED_NAMES = new Set([
@@ -91,7 +91,7 @@ export const appBodySchema = {
 /** The PUT body: everything but the name; `database`, `protected` and `takeOver` may be left out. */
 export type AppBody = Omit<AppSpec, 'name' | 'database'> & { database?: boolean }
 
-/** How traffic reaches the apps server (ADR 0021). */
+/** How traffic reaches the server (ADR 0021). */
 export type Edge = 'direct' | 'cloudflare'
 
 /** What the agent serves apps under; the dashboard reads it from `GET /settings`. */

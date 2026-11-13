@@ -135,4 +135,4 @@ KIT_TEST_POSTGRES_URL=postgres://postgres:testsuper@127.0.0.1:55432/postgres pnp
 ```
 
 Without `KIT_TEST_POSTGRES_URL` they are skipped. In CI they always run (CI starts the same
-Postgres image as the apps server).
+Postgres image as the server).

@@ -3,17 +3,17 @@ import { appDatabaseName } from '@spotcraft/kit/provision'
 
 /**
  * The local stack: one Postgres for every app repository on this machine, set up like the
- * apps server's (ADR 0017). Tests keep the values below equal to the server's files.
+ * Spotcraft server's (ADR 0017). Tests keep the values below equal to the server's files.
  */
 export const PROJECT = 'spotcraft-dev'
 export const CONTAINER = `${PROJECT}-postgres-1`
 export const PORT = 54340
 
-/** The apps server's Postgres image (infra/apps-server/compose.yaml). */
+/** The server's Postgres image (infra/server/compose.yaml). */
 export const POSTGRES_IMAGE =
   'postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42'
 
-/** The apps server's login rules (infra/apps-server/pg_hba.conf). */
+/** The server's Postgres login rules (infra/server/pg_hba.conf). */
 export const PG_HBA = `# TYPE  DATABASE  USER      ADDRESS  METHOD
 local   all       postgres           peer
 local   all       all                reject

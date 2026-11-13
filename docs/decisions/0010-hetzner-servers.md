@@ -5,7 +5,7 @@ status: accepted
 implementation: done
 date: 2026-11-07
 supersedes: []
-superseded_by: []
+superseded_by: [26]
 notes: "Refines ADR 0004 for the Hetzner module."
 ---
 

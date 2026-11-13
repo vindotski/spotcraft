@@ -2,7 +2,7 @@ import { chmod, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises
 import { join } from 'node:path'
 import type { AppSpec } from './app-spec.ts'
 
-/** Everything the apps server knows about one app; the files are the only record. */
+/** Everything the server knows about one app; the files are the only record. */
 export interface AppFiles {
   spec: string
   compose: string

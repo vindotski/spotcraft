@@ -29,7 +29,7 @@ updates:
       base-images: { patterns: ["*"] }
 
   - package-ecosystem: docker-compose
-    directories: [/infra/apps-server, /infra/ops-server]
+    directories: [/infra/server]
     schedule: { interval: weekly }
     cooldown: { default-days: 1 }
     groups:

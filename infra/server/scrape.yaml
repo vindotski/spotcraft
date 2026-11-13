@@ -1,14 +1,14 @@
-# vmagent scrape config. %{VAR} is expanded from the environment by vmagent.
+# vmagent scrape config: the exporters and blackbox on the server's `web` network.
 global:
   scrape_interval: 30s
 
 scrape_configs:
   - job_name: node
     static_configs:
-      - targets: ["%{APPS_PRIVATE_IP}:9100"]
+      - targets: ["node-exporter:9100"]
   - job_name: cadvisor
     static_configs:
-      - targets: ["%{APPS_PRIVATE_IP}:8080"]
+      - targets: ["cadvisor:8080"]
   # Uptime probes of each hosted app's public URLs. The dashboard writes the targets
   # (labelled app=<name>) whenever the app list changes; a protected app's targets also
   # carry module=http_access (blackbox.yml).

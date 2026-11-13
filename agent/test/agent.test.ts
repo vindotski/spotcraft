@@ -152,8 +152,8 @@ describe('agent', () => {
     const from = (remoteAddress: string) =>
       guarded.inject({ url: '/apps', headers: auth, remoteAddress })
     assert.equal((await from('172.18.0.5')).statusCode, 403, 'an app container')
-    assert.equal((await from('10.0.0.3')).statusCode, 200, 'the ops server')
-    assert.equal((await from('::ffff:10.0.0.3')).statusCode, 200, 'the ops server, dual-stack')
+    assert.equal((await from('10.0.0.3')).statusCode, 200, 'the dashboard')
+    assert.equal((await from('::ffff:10.0.0.3')).statusCode, 200, 'the dashboard, dual-stack')
     assert.equal((await from('127.0.0.1')).statusCode, 200, 'the container itself (health check)')
     await guarded.close()
   })

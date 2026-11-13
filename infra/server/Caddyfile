@@ -1,5 +1,7 @@
-# HTTPS for the dashboard (Let's Encrypt, automatic), or plain HTTP behind a Cloudflare Tunnel
-# (DASHBOARD_SCHEME=http://), where Cloudflare holds the certificate.
+# Caddy on the Spotcraft server: the dashboard at DASHBOARD_DOMAIN, and one site block per hosted
+# app in sites/<app>.caddy (written by the agent). HTTPS is automatic (Let's Encrypt), or plain
+# HTTP behind a Cloudflare Tunnel (DASHBOARD_SCHEME=http://; the agent writes http:// blocks),
+# where Cloudflare holds the certificates.
 {
 	servers {
 		# Behind a Cloudflare Tunnel (EDGE=cloudflare) requests come from cloudflared on a private
@@ -38,3 +40,5 @@
 		header_up X-Forwarded-For {client_ip}
 	}
 }
+
+import /etc/caddy/sites/*.caddy

@@ -102,7 +102,7 @@
 {/if}
 
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-  <Stat label="Reachable now" value={m.up === null ? '—' : m.up === 1 ? 'Yes' : 'No'} detail={app.protected ? "Every address, from the ops server, up to the Access sign-in" : "Every address, checked over HTTPS from the ops server"} />
+  <Stat label="Reachable now" value={m.up === null ? '—' : m.up === 1 ? 'Yes' : 'No'} detail={app.protected ? "Every address, probed over the internet, up to the Access sign-in" : "Every address, checked over HTTPS through the internet"} />
   <Stat label="Uptime" value={uptime(m.uptimeDay)} detail="Last 24 hours · 7 days: {uptime(m.uptimeWeek)}" />
   <Stat label="CPU" value={percent(last(m.cpu) === null ? null : (last(m.cpu) ?? 0) * 100, 1)} detail="of one core · limit {app.cpus}">
     <Sparkline series={m.cpu.map(([t, v]) => [t, v * 100] as [number, number])} format={(v) => percent(v, 1)} label="CPU, last hour" />
@@ -113,7 +113,7 @@
 </div>
 
 <div class="mt-4 grid gap-4 sm:grid-cols-2">
-  <Stat label="Response time" value={milliseconds(last(m.response))} detail="Full HTTPS request from the ops server">
+  <Stat label="Response time" value={milliseconds(last(m.response))} detail="Full HTTPS request, over the internet">
     <Sparkline series={m.response} format={milliseconds} label="Response time, last hour" />
   </Stat>
   <div class="space-y-2 border p-4 text-sm">

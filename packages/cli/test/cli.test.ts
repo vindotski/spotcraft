@@ -18,22 +18,22 @@ import {
 const repo = new URL('../../../', import.meta.url)
 const repoFile = (path: string) => readFile(new URL(path, repo), 'utf8')
 
-describe('same as the apps server', () => {
-  it('uses the Postgres image of the apps server and of CI', async () => {
-    const compose = await repoFile('infra/apps-server/compose.yaml')
+describe('same as the server', () => {
+  it('uses the Postgres image of the server and of CI', async () => {
+    const compose = await repoFile('infra/server/compose.yaml')
     const ci = await repoFile('.github/workflows/ci.yml')
     const images = (text: string) => [...text.matchAll(/image: (postgres:\S+)/g)].map((m) => m[1])
     assert.deepEqual(images(compose), [POSTGRES_IMAGE])
     assert.deepEqual(images(ci), [POSTGRES_IMAGE])
   })
 
-  it('uses the login rules of the apps server', async () => {
+  it('uses the login rules of the server', async () => {
     const rules = (text: string) =>
       text
         .split('\n')
         .filter((line) => line.trim() && !line.startsWith('#'))
         .map((line) => line.trim().split(/\s+/).join(' '))
-    assert.deepEqual(rules(PG_HBA), rules(await repoFile('infra/apps-server/pg_hba.conf')))
+    assert.deepEqual(rules(PG_HBA), rules(await repoFile('infra/server/pg_hba.conf')))
   })
 
   it("sets up the agent's role with the deploy script's SQL", async () => {

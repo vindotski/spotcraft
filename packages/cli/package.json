@@ -1,7 +1,7 @@
 {
   "name": "spotcraft",
   "version": "0.3.0",
-  "description": "The spotcraft command: run the Spotcraft apps server's database setup locally",
+  "description": "The spotcraft command: run the Spotcraft server's database setup locally",
   "keywords": [
     "spotcraft",
     "cli",

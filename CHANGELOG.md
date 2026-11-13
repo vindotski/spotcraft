@@ -38,6 +38,30 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Changed
 
+- **Spotcraft runs on one server** ([ADR 0026](docs/decisions/0026-one-server.md)). The agent,
+  the dashboard, Postgres and the monitoring share one Compose stack in `infra/server`, which
+  replaces `infra/apps-server` and `infra/ops-server`. Docker networks replace the private
+  network: hosted apps reach only Caddy and Postgres, and only the dashboard reaches the agent.
+  `infra/hetzner` creates one server and no network; `infra/cloudflare` keeps one tunnel. Add an
+  external uptime check on the dashboard's URL, since the monitoring now shares the server.
+  **Breaking**, migration from two servers:
+  1. In the `production` environment, add the variable `SERVER_HOST` (the apps server's public
+     IP) and the secret `CLOUDFLARE_TUNNEL_TOKEN` (the value of `CLOUDFLARE_TUNNEL_TOKEN_APPS`).
+  2. Run Deploy with the new version. The apps server now runs everything. The old dashboard on
+     the ops server loses the agent here, so expect a few minutes without a dashboard; hosted
+     apps keep running.
+  3. Stop the ops server's stack (`docker compose down` in `/opt/spotcraft` there).
+  4. Behind Cloudflare: `tofu plan` in `infra/cloudflare` must show the dashboard record moving
+     to the `spotcraft-apps` tunnel, `spotcraft-ops` being destroyed, and **no replacement** of
+     `spotcraft-apps`. Then `tofu apply`. Without Cloudflare: point the dashboard's A and AAAA
+     records at the apps server.
+  5. `tofu plan` in `infra/hetzner` must show the ops server and the private network being
+     destroyed and no replacement of `spotcraft-apps`. The ops server has delete protection: set
+     `protect_servers = false` for that one apply, then back to `true`.
+  6. Remove `APPS_HOST`, `OPS_HOST`, `APPS_PRIVATE_IP`, `OPS_PRIVATE_IP`,
+     `CLOUDFLARE_TUNNEL_TOKEN_APPS` and `CLOUDFLARE_TUNNEL_TOKEN_OPS`, trim `KNOWN_HOSTS` to the
+     server's key, and remove the leftover `ufw allow from 10.0.0.0/16` rule on the server.
+     The metrics history from the ops server isn't carried over.
 - **Taking over a custom domain's DNS records is now an app setting**
   ([ADR 0022](docs/decisions/0022-takeover-setting.md)). `takeOver` is stored in `app.json`,
   returned by `GET /apps/:name` and sent in the `PUT` body. The dashboard's checkbox keeps its

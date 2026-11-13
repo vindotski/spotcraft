@@ -1,7 +1,7 @@
 name: Deploy
 
-# Deploys Spotcraft itself (agent + monitoring on the apps server, dashboard + monitoring on
-# the ops server) at a published image tag. Hosted apps are deployed from the dashboard.
+# Deploys Spotcraft itself (the agent, the dashboard, Postgres and the monitoring, all on one
+# server, ADR 0026) at a published image tag. Hosted apps are deployed from the dashboard.
 # Manual on purpose: pick the tag (latest, or sha-abc1234 to roll back).
 on:
   workflow_dispatch:
@@ -28,13 +28,10 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
       NAMESPACE: ${{ vars.DOCKERHUB_USERNAME || 'vindotski' }}
-      APPS_HOST: ${{ vars.APPS_HOST }}
-      OPS_HOST: ${{ vars.OPS_HOST }}
-      APPS_PRIVATE_IP: ${{ vars.APPS_PRIVATE_IP || '10.0.0.2' }}
-      OPS_PRIVATE_IP: ${{ vars.OPS_PRIVATE_IP || '10.0.0.3' }}
+      SERVER_HOST: ${{ vars.SERVER_HOST }}
       DASHBOARD_DOMAIN: ${{ vars.DASHBOARD_DOMAIN }}
       APPS_DOMAIN: ${{ vars.APPS_DOMAIN }}
-      # cloudflare: both servers sit behind Cloudflare Tunnels (ADR 0021); default direct.
+      # cloudflare: the server sits behind a Cloudflare Tunnel (ADR 0021); default direct.
       EDGE: ${{ vars.EDGE || 'direct' }}
       # Optional: the agent sets up custom domains' DNS (infra/cloudflare's agent_settings).
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -59,7 +56,7 @@ jobs:
             echo "::error::EDGE must be direct or cloudflare"
             exit 1
           fi
-          for name in APPS_HOST OPS_HOST DASHBOARD_DOMAIN; do
+          for name in SERVER_HOST DASHBOARD_DOMAIN; do
             if [ -z "${!name}" ]; then
               echo "::error::Set the $name variable on the production environment"
               exit 1
@@ -68,8 +65,8 @@ jobs:
           # Fail before touching a server if the image was never published.
           docker manifest inspect "$NAMESPACE/spotcraft:$TAG" > /dev/null
 
-      # Plain ssh/scp, no third-party action. Host keys are pinned via a secret, so a
-      # man-in-the-middle can't impersonate either server.
+      # Plain ssh/scp, no third-party action. The host key is pinned via a secret, so a
+      # man-in-the-middle can't impersonate the server.
       - name: Set up SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -80,47 +77,34 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           {
-            printf 'Host apps\n  HostName %s\n' "$APPS_HOST"
-            printf 'Host ops\n  HostName %s\n' "$OPS_HOST"
+            printf 'Host server\n  HostName %s\n' "$SERVER_HOST"
             printf 'Host *\n  User deploy\n  IdentityFile ~/.ssh/id_deploy\n  StrictHostKeyChecking yes\n  BatchMode yes\n  ConnectTimeout 15\n'
           } > ~/.ssh/config
 
-      - name: Deploy the apps server
+      - name: Deploy the server
         env:
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
           POSTGRES_AGENT_PASSWORD: ${{ secrets.POSTGRES_AGENT_PASSWORD }}
-          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN_APPS }}
+          DASHBOARD_PASSWORD_HASH: ${{ secrets.DASHBOARD_PASSWORD_HASH }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          scp infra/apps-server/compose.yaml infra/apps-server/Caddyfile infra/apps-server/pg_hba.conf apps:/opt/spotcraft/
+          scp infra/server/compose.yaml infra/server/Caddyfile infra/server/pg_hba.conf \
+            infra/server/scrape.yaml infra/server/blackbox.yml server:/opt/spotcraft/
           {
-            printf 'export ROLE=apps SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q PRIVATE_IP=%q OPS_PRIVATE_IP=%q AGENT_TOKEN=%q\n' \
-              "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$OPS_PRIVATE_IP" "$AGENT_TOKEN"
+            printf 'export SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q AGENT_TOKEN=%q\n' \
+              "$TAG" "$NAMESPACE" "$AGENT_TOKEN"
+            printf 'export DASHBOARD_DOMAIN=%q DASHBOARD_PASSWORD_HASH=%q SESSION_SECRET=%q\n' \
+              "$DASHBOARD_DOMAIN" "$DASHBOARD_PASSWORD_HASH" "$SESSION_SECRET"
             printf 'export POSTGRES_AGENT_PASSWORD=%q APPS_DOMAIN=%q\n' "$POSTGRES_AGENT_PASSWORD" "$APPS_DOMAIN"
             printf 'export EDGE=%q CLOUDFLARE_TUNNEL_TOKEN=%q\n' "$EDGE" "$CLOUDFLARE_TUNNEL_TOKEN"
             printf 'export CLOUDFLARE_API_TOKEN=%q CLOUDFLARE_ACCOUNT_ID=%q CLOUDFLARE_APPS_ZONE_ID=%q CLOUDFLARE_TUNNEL_ID=%q\n' \
               "$CLOUDFLARE_API_TOKEN" "$CLOUDFLARE_ACCOUNT_ID" "$CLOUDFLARE_APPS_ZONE_ID" "$CLOUDFLARE_TUNNEL_ID"
             printf 'export CLOUDFLARE_ACCESS_POLICY_ID=%q\n' "$CLOUDFLARE_ACCESS_POLICY_ID"
-            cat infra/remote-deploy.sh
-          } | ssh apps bash -s
-
-      - name: Deploy the ops server
-        env:
-          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
-          DASHBOARD_PASSWORD_HASH: ${{ secrets.DASHBOARD_PASSWORD_HASH }}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN_OPS }}
-        run: |
-          scp infra/ops-server/compose.yaml infra/ops-server/Caddyfile infra/ops-server/scrape.yaml infra/ops-server/blackbox.yml ops:/opt/spotcraft/
-          {
-            printf 'export ROLE=ops SPOTCRAFT_TAG=%q IMAGE_NAMESPACE=%q APPS_PRIVATE_IP=%q DASHBOARD_DOMAIN=%q\n' \
-              "$TAG" "$NAMESPACE" "$APPS_PRIVATE_IP" "$DASHBOARD_DOMAIN"
-            printf 'export AGENT_TOKEN=%q DASHBOARD_PASSWORD_HASH=%q SESSION_SECRET=%q\n' \
-              "$AGENT_TOKEN" "$DASHBOARD_PASSWORD_HASH" "$SESSION_SECRET"
             printf 'export CF_ACCESS_TEAM_DOMAIN=%q CF_ACCESS_AUD=%q\n' "$CF_ACCESS_TEAM_DOMAIN" "$CF_ACCESS_AUD"
-            printf 'export EDGE=%q CLOUDFLARE_TUNNEL_TOKEN=%q\n' "$EDGE" "$CLOUDFLARE_TUNNEL_TOKEN"
             cat infra/remote-deploy.sh
-          } | ssh ops bash -s
+          } | ssh server bash -s
 
       # The login page, or, with Cloudflare Access in front, a redirect to Access's sign-in.
       - name: Check the dashboard from outside

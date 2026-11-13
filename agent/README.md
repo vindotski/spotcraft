@@ -1,7 +1,7 @@
 # @spotcraft/agent
 
-Fastify service on the **apps server** that deploys apps when the dashboard asks. It listens
-on the private network only, answers only the addresses in `AGENT_ALLOWED_IPS` (plus its own
+Fastify service on the Spotcraft server that deploys apps when the dashboard asks. It is
+reachable only on Docker networks (never on a host port), answers only the addresses in `AGENT_ALLOWED_IPS` (plus its own
 loopback, for the health check), and requires a bearer token on every route but `/health`.
 
 The files it writes are the only record of which apps exist:
