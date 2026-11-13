@@ -146,9 +146,15 @@ Every app's responses are compressed (zstd, gzip) and get these headers from Cad
   `Cross-Origin-Opener-Policy: same-origin`.
 
 An app's own value for one of the defaults wins, so an app can loosen them. The
-`Content-Security-Policy` is the app's to set, as no default fits every app. An app that should
-be framed elsewhere sends a CSP with `frame-ancestors`, which browsers follow instead of
-`X-Frame-Options`.
+`Content-Security-Policy` is the app's to set, as no default fits every app.
+
+- To be framed elsewhere, an app sends its own `X-Frame-Options`, or a CSP with `frame-ancestors`,
+  which browsers follow instead.
+- To use the camera, microphone, geolocation, payment or USB, it sends its own
+  `Permissions-Policy` (e.g. `camera=(self)`). A CSP doesn't change these.
+- For popups that need `window.opener` (some OAuth flows), it sends its own
+  `Cross-Origin-Opener-Policy` (e.g. `same-origin-allow-popups`).
+
 Caddy passes the visitor's address to the app as `X-Forwarded-For`. With `EDGE=cloudflare`,
 site blocks are plain HTTP (`http://host`): Cloudflare terminates TLS and a tunnel delivers
 requests to Caddy.

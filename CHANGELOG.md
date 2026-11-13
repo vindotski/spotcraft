@@ -14,9 +14,14 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 - **Default security headers for apps.** Caddy sends `X-Frame-Options: DENY`, a
   `Permissions-Policy` that turns off camera, microphone, geolocation, payment and USB, and
-  `Cross-Origin-Opener-Policy: same-origin`, but only when the app doesn't send its own. An app
-  that is meant to be framed, or uses one of those features, sends its own value, or a CSP with
-  `frame-ancestors`. The app's CSP stays its own to set.
+  `Cross-Origin-Opener-Policy: same-origin`, but only when the app doesn't send its own. The
+  app's CSP stays its own to set. To override a default:
+  - **framing:** an app meant to be framed sends its own `X-Frame-Options`, or a CSP with
+    `frame-ancestors`, which browsers follow instead;
+  - **camera, microphone, geolocation, payment or USB:** the app sends its own
+    `Permissions-Policy` allowing them, e.g. `camera=(self)`. A CSP doesn't change these;
+  - **popups that need `window.opener`** (some OAuth flows): the app sends its own
+    `Cross-Origin-Opener-Policy`, e.g. `same-origin-allow-popups`.
 
 ### Changed
 
