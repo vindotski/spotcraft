@@ -48,17 +48,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # A Spotcraft release ships the kit inside the image (the agent migrates app databases with
       # it) and pins it in the CLI, so that kit must be the published one: on npm, and its source
-      # unchanged since its kit-v<version> tag (ADR 0027).
+      # unchanged since its kit-v<version> tag (ADR 0027). Read through the GitHub API with the
+      # job's read-only token, since the checkout keeps no git credentials. Forks don't
+      # publish the kit, so only the original repository checks.
       - name: The kit in this release is published
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
           kit="$(jq -r .version packages/kit/package.json)"
           if ! npm view "@spotcraft/kit@$kit" version > /dev/null 2>&1; then
             echo "::error::@spotcraft/kit@$kit isn't on npm: release it first (tag kit-v$kit)"
             exit 1
           fi
-          git fetch --no-tags --depth=1 origin "refs/tags/kit-v$kit:refs/tags/kit-v$kit"
-          if ! git diff --quiet "kit-v$kit" HEAD -- packages/kit/src; then
+          # The git tree hash of packages/kit/src at each ref: equal means unchanged.
+          src() { gh api "repos/$REPO/contents/packages/kit?ref=$1" --jq '.[] | select(.name == "src") | .sha'; }
+          if ! tagged="$(src "kit-v$kit")" || [ -z "$tagged" ]; then
+            echo "::error::Can't read packages/kit/src at kit-v$kit: does the tag exist?"
+            exit 1
+          fi
+          if [ "$(src "$SHA")" != "$tagged" ]; then
             echo "::error::packages/kit/src changed since kit-v$kit: release a new kit version first"
             exit 1
           fi
