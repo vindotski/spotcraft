@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AppSpec } from './app-spec.ts'
 
@@ -31,15 +31,18 @@ export class Store {
     return join(this.dataDir, 'sites', `${name}.caddy`)
   }
 
-  async list(): Promise<AppSpec[]> {
-    let names: string[]
+  /** Every app directory, complete or not (a new app's first deploy has only staged files). */
+  async names(): Promise<string[]> {
     try {
-      names = await readdir(join(this.dataDir, 'apps'))
+      return (await readdir(join(this.dataDir, 'apps'))).sort()
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
       throw error
     }
-    const specs = await Promise.all(names.sort().map((name) => this.get(name)))
+  }
+
+  async list(): Promise<AppSpec[]> {
+    const specs = await Promise.all((await this.names()).map((name) => this.get(name)))
     return specs.filter((spec): spec is AppSpec => spec !== undefined)
   }
 
@@ -51,7 +54,7 @@ export class Store {
   async read(name: string): Promise<AppFiles | undefined> {
     try {
       const [spec, compose, site] = await Promise.all([
-        readFile(join(this.appDir(name), 'app.json'), 'utf8'),
+        readFile(this.#specPath(name), 'utf8'),
         readFile(this.composePath(name), 'utf8'),
         readFile(this.sitePath(name), 'utf8'),
       ])
@@ -65,12 +68,85 @@ export class Store {
   async write(name: string, files: AppFiles) {
     await mkdir(this.appDir(name), { recursive: true })
     await mkdir(join(this.dataDir, 'sites'), { recursive: true })
-    await writeFile(join(this.appDir(name), 'app.json'), files.spec)
-    // It carries DATABASE_URL, with the app's database password: the agent's user only, like
-    // secrets.json (chmod as well: the mode only applies when the file is created).
-    await writeFile(this.composePath(name), files.compose, { mode: 0o600 })
-    await chmod(this.composePath(name), 0o600)
-    await writeFile(this.sitePath(name), files.site)
+    // app.json carries the app's env (AUTH_SECRET and the like) and compose.yaml also
+    // DATABASE_URL, with the app's database password: the agent's user only, like secrets.json
+    // (chmod as well: the mode only applies when the file is created).
+    for (const [path, content] of [
+      [this.#specPath(name), files.spec],
+      [this.composePath(name), files.compose],
+    ] as const) {
+      await writeFile(path, content, { mode: 0o600 })
+      await chmod(path, 0o600)
+    }
+    await this.writeSite(name, files.site)
+  }
+
+  /** Only the Caddy site, e.g. once a new slot is healthy and traffic can move to it. */
+  async writeSite(name: string, site: string) {
+    await mkdir(join(this.dataDir, 'sites'), { recursive: true })
+    await writeFile(this.sitePath(name), site)
+  }
+
+  #specPath(name: string) {
+    return join(this.appDir(name), 'app.json')
+  }
+
+  /** The compose file of a deploy in progress, until it is committed (ADR 0028). */
+  stagedComposePath(name: string) {
+    return join(this.appDir(name), 'compose.next.yaml')
+  }
+  #stagedSpecPath(name: string) {
+    return join(this.appDir(name), 'app.next.json')
+  }
+
+  /**
+   * Writes a deploy's spec and compose file next to the live ones. The live files keep
+   * describing the slot that serves, so an agent that stops mid-deploy restarts with them.
+   */
+  async stage(name: string, files: Omit<AppFiles, 'site'>) {
+    await mkdir(this.appDir(name), { recursive: true })
+    for (const [path, content] of [
+      [this.#stagedSpecPath(name), files.spec],
+      [this.stagedComposePath(name), files.compose],
+    ] as const) {
+      await writeFile(path, content, { mode: 0o600 })
+      await chmod(path, 0o600)
+    }
+  }
+
+  /**
+   * Makes the staged files the live ones. Renaming the compose file is the commit: once it is
+   * done, the new slot is the live one. The spec follows; `recover` finishes that rename if the
+   * agent stopped in between.
+   */
+  async commit(name: string) {
+    await rename(this.stagedComposePath(name), this.composePath(name))
+    await rename(this.#stagedSpecPath(name), this.#specPath(name))
+  }
+
+  /** Drops a deploy's staged files. */
+  async discardStaged(name: string) {
+    await rm(this.stagedComposePath(name), { force: true })
+    await rm(this.#stagedSpecPath(name), { force: true })
+  }
+
+  /**
+   * After a restart: finishes a commit that stopped between its two renames, and returns the
+   * staged compose file of a deploy that never committed (its slot must go), or undefined.
+   */
+  async recover(name: string): Promise<string | undefined> {
+    const exists = (path: string) =>
+      access(path).then(
+        () => true,
+        () => false,
+      )
+    if (await exists(this.stagedComposePath(name))) {
+      return readFile(this.stagedComposePath(name), 'utf8')
+    }
+    if (await exists(this.#stagedSpecPath(name))) {
+      await rename(this.#stagedSpecPath(name), this.#specPath(name))
+    }
+    return undefined
   }
 
   #secretsPath(name: string) {
@@ -86,11 +162,22 @@ export class Store {
     }
   }
 
-  /** Makes the app's compose file the agent's alone, as written before that was the rule. */
-  async lockDownCompose(name: string) {
-    await chmod(this.composePath(name), 0o600).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error
-    })
+  /**
+   * Makes the app's env- and password-bearing files the agent's alone, as older agents didn't.
+   * Works on whichever of them exist, so an incomplete app directory is fixed too.
+   */
+  async lockDown(name: string) {
+    for (const path of [
+      this.#specPath(name),
+      this.composePath(name),
+      this.#secretsPath(name),
+      this.#stagedSpecPath(name),
+      this.stagedComposePath(name),
+    ]) {
+      await chmod(path, 0o600).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error
+      })
+    }
   }
 
   /** Readable by the agent's user only. */

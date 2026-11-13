@@ -9,12 +9,13 @@ import {
   hostnames,
   projectName,
   servedHosts,
+  slotService,
 } from './app-spec.ts'
 import { CloudflareError } from './cloudflare.ts'
 import { DomainConflict, type Domains } from './domains.ts'
 import type { Runner, RunResult } from './runner.ts'
 import type { AppFiles, Store } from './store.ts'
-import { renderCompose, renderSite } from './templates.ts'
+import { composeService, renderCompose, renderSite } from './templates.ts'
 
 export class AgentError extends Error {
   readonly statusCode: number
@@ -39,10 +40,18 @@ export interface AppStatus extends AppSpec {
 
 /** The fields of `docker ps --format json` the agent reads. */
 interface ContainerRow {
+  ID?: string
   Labels?: string
   State?: string
   Status?: string
 }
+
+const label = (row: ContainerRow, key: string) =>
+  new RegExp(`(?:^|,)${key.replaceAll('.', '\\.')}=([^,]+)`).exec(row.Labels ?? '')?.[1]
+
+/** The live slot's container, out of an app's containers (both slots run during a deploy). */
+const liveRow = (rows: ContainerRow[] | undefined, service: string | undefined) =>
+  rows?.find((row) => label(row, 'com.docker.compose.service') === service) ?? rows?.[0]
 
 function withStatus(
   spec: AppSpec,
@@ -153,12 +162,10 @@ export class Apps {
     return next
   }
 
-  #compose(name: string, args: string[], timeoutMs?: number) {
-    return this.#run(
-      'docker',
-      ['compose', '-p', projectName(name), '-f', this.#store.composePath(name), ...args],
-      timeoutMs,
-    )
+  /** Runs Compose on the app's live compose file, or with `staged` on a deploy's new one. */
+  #compose(name: string, args: string[], { staged = false } = {}) {
+    const file = staged ? this.#store.stagedComposePath(name) : this.#store.composePath(name)
+    return this.#run('docker', ['compose', '-p', projectName(name), '-f', file, ...args])
   }
 
   async #reloadCaddy() {
@@ -178,23 +185,40 @@ export class Apps {
     const specs = await this.#store.list()
     if (specs.length === 0) return []
     const containers = await this.#containers()
-    return specs.map((spec) =>
-      withStatus(spec, containers.get(projectName(spec.name)), this.settings),
+    return Promise.all(
+      specs.map(async (spec) =>
+        withStatus(
+          spec,
+          liveRow(containers.get(projectName(spec.name)), await this.#liveService(spec.name)),
+          this.settings,
+        ),
+      ),
     )
   }
 
   async get(name: string): Promise<AppStatus | undefined> {
     const spec = await this.#store.get(name)
     if (!spec) return undefined
-    const containers = await this.#containers(projectName(name))
-    return withStatus(spec, containers.get(projectName(name)), this.settings)
+    return this.#status(spec)
+  }
+
+  async #status(spec: AppSpec): Promise<AppStatus> {
+    const project = projectName(spec.name)
+    const rows = (await this.#containers(project)).get(project)
+    return withStatus(spec, liveRow(rows, await this.#liveService(spec.name)), this.settings)
+  }
+
+  /** The service of the app's live slot, from its compose file; undefined if it has none. */
+  async #liveService(name: string): Promise<string | undefined> {
+    const files = await this.#store.read(name)
+    return files ? composeService(files.compose) : undefined
   }
 
   /**
    * Every app container's state from a single `docker ps` (one process, however many apps),
-   * keyed by Compose project. With `project`, only that app's container.
+   * grouped by Compose project. With `project`, only that app's containers.
    */
-  async #containers(project?: string): Promise<Map<string, ContainerRow>> {
+  async #containers(project?: string): Promise<Map<string, ContainerRow[]>> {
     const filter = project
       ? `label=com.docker.compose.project=${project}`
       : 'label=com.docker.compose.project'
@@ -206,14 +230,29 @@ export class Apps {
       '--format',
       'json',
     ])
-    const rows = new Map<string, ContainerRow>()
+    const rows = new Map<string, ContainerRow[]>()
     for (const line of result.stdout.split('\n')) {
       if (!line.trim()) continue
       const row = JSON.parse(line) as ContainerRow
-      const name = /(?:^|,)com\.docker\.compose\.project=([^,]+)/.exec(row.Labels ?? '')?.[1]
-      if (name?.startsWith('spotcraft-app-')) rows.set(name, row)
+      const name = label(row, 'com.docker.compose.project')
+      if (name?.startsWith('spotcraft-app-')) rows.set(name, [...(rows.get(name) ?? []), row])
     }
     return rows
+  }
+
+  /** Stops and removes the app's containers other than `keep`'s: the slot traffic left. */
+  async #removeOtherSlots(name: string, keep: string | undefined) {
+    const rows = (await this.#containers(projectName(name))).get(projectName(name)) ?? []
+    const ids = rows
+      .filter((row) => label(row, 'com.docker.compose.service') !== keep)
+      .map((row) => row.ID)
+      .filter((id): id is string => Boolean(id))
+    if (ids.length === 0) return
+    // SIGTERM, then up to 30 seconds to finish the requests it already has (as its compose
+    // file's stop_grace_period). A failure leaves it running, which costs memory, not traffic.
+    const stop = await this.#run('docker', ['stop', '--time', '30', ...ids], 60_000)
+    const rm = stop.code === 0 ? await this.#run('docker', ['rm', ...ids]) : stop
+    if (rm.code !== 0) console.warn(`could not remove the old slot of ${name}: ${tail(rm)}`)
   }
 
   /**
@@ -268,41 +307,80 @@ export class Apps {
     })
   }
 
+  /**
+   * Starts the new version in the slot that isn't live, next to the live one; once it is
+   * healthy, Caddy moves traffic to it and the old slot stops (ADR 0028). Until then the live
+   * slot serves as before, so a version that fails never gets traffic.
+   *
+   * The new spec and compose file are staged next to the live ones and only committed once the
+   * new slot is healthy, so an agent that stops mid-deploy restarts with the live slot's files
+   * (`recover`).
+   */
   async #rollOut(spec: AppSpec): Promise<AppStatus> {
     const databaseUrl = spec.database ? await this.#provision(spec.name) : undefined
     const previous = await this.#store.read(spec.name)
-    const next = {
+    const live = previous ? composeService(previous.compose) : undefined
+    const slot = live === slotService(spec.name, 'blue') ? 'green' : 'blue'
+    const service = slotService(spec.name, slot)
+    await this.#store.stage(spec.name, {
       spec: `${JSON.stringify(spec, null, 2)}\n`,
-      compose: renderCompose(spec, databaseUrl),
-      site: renderSite(spec, this.settings),
-    }
-    await this.#store.write(spec.name, next)
+      compose: renderCompose(spec, service, databaseUrl),
+    })
 
-    const pull = await this.#compose(spec.name, ['pull', '--quiet'])
+    const pull = await this.#compose(spec.name, ['pull', '--quiet'], { staged: true })
     if (pull.code !== 0) {
-      await this.#restore(spec.name, previous)
+      await this.#abandon(spec.name, service, previous)
       throw new AgentError(`Could not pull ${spec.image}:${spec.tag}`, 502, tail(pull))
     }
-    const up = await this.#compose(spec.name, ['up', '-d', '--wait', '--wait-timeout', '120'])
+    // Only the new slot's service, and no --remove-orphans: the live slot's container isn't in
+    // this compose file, and must keep running.
+    const up = await this.#compose(
+      spec.name,
+      ['up', '-d', '--wait', '--wait-timeout', '120', service],
+      {
+        staged: true,
+      },
+    )
     if (up.code !== 0) {
-      const logs = await this.#compose(spec.name, ['logs', '--tail', '50', '--no-color'])
-      await this.#restore(spec.name, previous)
+      const logs = await this.#compose(spec.name, ['logs', '--tail', '50', '--no-color'], {
+        staged: true,
+      })
+      await this.#abandon(spec.name, service, previous)
       throw new AgentError(
         `${spec.name} did not start or become healthy`,
         502,
         `${tail(up)}\n${tail(logs)}`,
       )
     }
+    // The new slot is healthy: point the site at it, then commit. A restart before the commit
+    // finds the old compose file, rewrites the site back and drops the new slot.
+    await this.#store.writeSite(spec.name, renderSite(spec, this.settings, service))
+    await this.#store.commit(spec.name)
     const reload = await this.#reloadCaddy()
     if (reload.code !== 0) {
-      await this.#restore(spec.name, previous)
+      // Caddy still runs its previous configuration, so the old slot still serves.
+      await this.#compose(spec.name, ['rm', '--stop', '--force', service])
+      if (previous) await this.#store.write(spec.name, previous)
+      else await this.#store.remove(spec.name)
+      await this.#reloadCaddy()
       throw new AgentError('Caddy rejected the site configuration', 500, tail(reload))
     }
-    return withStatus(
-      spec,
-      (await this.#containers(projectName(spec.name))).get(projectName(spec.name)),
-      this.settings,
-    )
+    // Traffic is on the new slot: the old one (or the single service of an app deployed before
+    // slots) can go.
+    await this.#removeOtherSlots(spec.name, service)
+    return this.#status(spec)
+  }
+
+  /**
+   * Gives up a deploy before its commit: removes the new slot's container and the staged files.
+   * The live slot, its files and Caddy were never touched. An app that had no previous version
+   * is removed altogether.
+   */
+  async #abandon(name: string, service: string, previous: AppFiles | undefined) {
+    // A pull failure started nothing; `rm` then has nothing to do.
+    await this.#compose(name, ['rm', '--stop', '--force', service], { staged: true })
+    if (previous) await this.#store.discardStaged(name)
+    else await this.#store.remove(name)
   }
 
   /** Where the app's custom domain stands; undefined if there is no such app. */
@@ -338,14 +416,58 @@ export class Apps {
    * site changed.
    */
   refreshSites(): Promise<string[]> {
+    return this.#exclusive(() => this.#refreshSites())
+  }
+
+  /**
+   * What the agent does when it starts, before anything else (ADR 0028):
+   * 1. locks down every app directory's env- and password-bearing files, as older agents left
+   *    them readable by everyone, including directories that aren't a complete app;
+   * 2. drops what a deploy interrupted before its commit had staged, and finishes a commit
+   *    interrupted between its renames;
+   * 3. rewrites the sites for the live slots and the current settings (`refreshSites`);
+   * 4. removes containers of slots that aren't live: the new slot of an interrupted deploy, or
+   *    the old one of a deploy that stopped before removing it. Caddy reloads first, so it no
+   *    longer routes to them.
+   * Throws if Caddy can't reload yet (it may still be starting); it is safe to call again.
+   */
+  recover(): Promise<string[]> {
     return this.#exclusive(async () => {
+      for (const name of await this.#store.names()) {
+        await this.#store.lockDown(name)
+        if (await this.#store.recover(name)) await this.#store.discardStaged(name)
+      }
+      const changed = await this.#refreshSites()
+      const strays: { name: string; live: string | undefined }[] = []
+      const containers = await this.#containers()
+      for (const name of await this.#store.names()) {
+        const live = await this.#liveService(name)
+        const rows = containers.get(projectName(name)) ?? []
+        if (rows.some((row) => label(row, 'com.docker.compose.service') !== live)) {
+          strays.push({ name, live })
+        }
+      }
+      if (strays.length === 0) return changed
+      // The previous agent may have committed a slot without reloading Caddy.
+      const reload = await this.#reloadCaddy()
+      if (reload.code !== 0) throw new AgentError('Caddy could not reload', 500, tail(reload))
+      for (const { name, live } of strays) await this.#removeOtherSlots(name, live)
+      return changed
+    })
+  }
+
+  async #refreshSites(): Promise<string[]> {
+    {
       const pending: { spec: AppSpec; files: AppFiles; site: string }[] = []
       for (const spec of await this.#store.list()) {
-        // Compose files carry DATABASE_URL; older ones were written readable by everyone.
-        await this.#store.lockDownCompose(spec.name)
+        // Compose files carry DATABASE_URL and app.json the env; older ones were written
+        // readable by everyone.
+        await this.#store.lockDown(spec.name)
         const files = await this.#store.read(spec.name)
-        const site = renderSite(spec, this.settings)
-        if (files && files.site !== site) pending.push({ spec, files, site })
+        const service = files && composeService(files.compose)
+        if (!files || !service) continue
+        const site = renderSite(spec, this.settings, service)
+        if (files.site !== site) pending.push({ spec, files, site })
       }
       if (pending.length === 0) return []
       // Protected apps' new hosts go behind Access before Caddy serves them, next to the old
@@ -380,7 +502,7 @@ export class Apps {
         }
       }
       return pending.map((p) => p.spec.name)
-    })
+    }
   }
 
   /** Prepares the app's database with its stored password (generated the first time). */
@@ -422,17 +544,6 @@ export class Apps {
       }
       return result
     })
-  }
-
-  async #restore(name: string, previous: Awaited<ReturnType<Store['read']>>) {
-    if (previous) {
-      await this.#store.write(name, previous)
-      await this.#compose(name, ['up', '-d'])
-    } else {
-      await this.#compose(name, ['down', '--remove-orphans'])
-      await this.#store.remove(name)
-    }
-    await this.#reloadCaddy()
   }
 
   /** The app's database interface, or why its users can't be shown (404 or 409). */

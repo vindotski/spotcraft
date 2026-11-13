@@ -10,6 +10,23 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+### Changed
+
+- **Deploys have no downtime.** The agent starts the new version in a second slot next to the
+  live one, moves traffic once it is healthy, then stops the old one, which gets 30 seconds to
+  finish its requests. A version that fails never takes traffic, and the old one isn't restarted
+  ([ADR 0028](docs/decisions/0028-zero-downtime-deploys.md)). For a few seconds both versions run
+  against the app's database, so an app's migrations must only add; its memory briefly doubles.
+  Existing apps move into a slot on their next deploy, with no steps needed. **Breaking:** app
+  names ending in `-blue` or `-green` are now reserved. Rename such an app (add it under a new
+  name, then remove the old one) before upgrading.
+
+### Fixed
+
+- **An app's `app.json`, which holds its env, is readable by the agent's user only.** It was
+  written with the default mode (usually world-readable). The agent fixes existing files when it
+  starts.
+
 ## [0.4.1] - 2026-11-13
 
 A fix for Log out behind Cloudflare Access. No upgrade steps: deploy `0.4.1`.

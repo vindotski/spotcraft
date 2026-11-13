@@ -70,7 +70,9 @@ export function parseAppForm(
     } else if (isReservedName(values.name)) {
       errors.name = values.name.startsWith('app-')
         ? 'Names starting with "app-" are reserved.'
-        : `"${values.name}" is reserved.`
+        : /-(blue|green)$/.test(values.name)
+          ? 'Names ending in "-blue" or "-green" are reserved.'
+          : `"${values.name}" is reserved.`
     }
   }
   if (!matches(IMAGE, values.image)) errors.image = 'A repository like vindotski/tagtape.'
