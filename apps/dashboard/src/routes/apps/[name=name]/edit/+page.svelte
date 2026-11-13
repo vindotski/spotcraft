@@ -3,6 +3,18 @@
   import type { PageProps } from './$types'
 
   let { data, form }: PageProps = $props()
+
+  // Docker Hub's tags arrive after the page (streamed); the form fills them in when they do.
+  let tags = $state<string[]>([])
+  $effect(() => {
+    let current = true
+    data.tags.then((list) => {
+      if (current) tags = list
+    })
+    return () => {
+      current = false
+    }
+  })
 </script>
 
 <svelte:head><title>Edit {data.values.name} · Spotcraft</title></svelte:head>
@@ -16,7 +28,7 @@
   deployError={form?.deployError ?? undefined}
   output={form?.output ?? undefined}
   withName={false}
-  tags={data.tags}
+  {tags}
   submitLabel="Save and deploy"
   appsDomain={data.appsDomain}
   dns={data.dns}

@@ -14,13 +14,21 @@ FROM docker:29.9.3-cli@sha256:2357639ad1ea7d0194134bf3292622fd4e562483966ed674e5
 FROM --platform=$BUILDPLATFORM node:26.13.1-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 RUN npm install --global pnpm@12.4.1
 WORKDIR /repo
+# Dependencies first, from the lockfile alone: this layer (and the store cache) is reused until
+# the lockfile changes, so editing code or docs doesn't download everything again.
+ENV PNPM_STORE_DIR=/pnpm/store
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+  pnpm fetch --store-dir "$PNPM_STORE_DIR"
 COPY . .
 # The agent runs its TypeScript directly, with production node_modules; the kit (app databases)
 # ships as built JavaScript, since Node won't run TypeScript from node_modules. The dashboard is
 # bundled into build/ and needs no node_modules.
-RUN pnpm install --frozen-lockfile --filter @spotcraft/agent... --filter @spotcraft/dashboard... \
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+  pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR" \
+    --filter @spotcraft/agent... --filter @spotcraft/dashboard... \
   && pnpm --filter @spotcraft/kit build \
-  && pnpm --filter @spotcraft/agent deploy --prod /out/agent \
+  && pnpm --filter @spotcraft/agent deploy --prod --store-dir "$PNPM_STORE_DIR" /out/agent \
   && pnpm --filter @spotcraft/dashboard build \
   && mkdir -p /out/dashboard /probes \
   && cp -r apps/dashboard/package.json apps/dashboard/build /out/dashboard/

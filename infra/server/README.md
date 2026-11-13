@@ -50,7 +50,9 @@ process limits, and health checks. The agent and the dashboard run from the same
 image ([ADR 0025](../../docs/decisions/0025-one-image.md)); only the agent's container mounts
 the Docker socket. cAdvisor gets the Docker and containerd sockets read-only to name containers
 and read their Compose labels; the dashboard finds each app's metrics by
-`com.docker.compose.project`.
+`com.docker.compose.project`. cAdvisor collects only what the dashboard reads: Docker
+containers' CPU and memory, every 30 seconds, with that one label (about a sixth of its default
+series).
 
 ## Caddy
 

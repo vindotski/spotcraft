@@ -1,3 +1,4 @@
+import { NAME } from '@spotcraft/agent/app-spec'
 import { error, fail, redirect } from '@sveltejs/kit'
 import {
   appLogs,
@@ -12,18 +13,23 @@ import { writeProbes } from '#lib/server/probes.ts'
 import type { Actions, PageServerLoad } from './$types'
 
 export const load: PageServerLoad = async ({ params }) => {
-  const app = await getApp(params.name)
-  if (!app) error(404, 'No such app')
-  const [cpu, memory, response, up, uptimeDay, uptimeWeek, logs, domain] = await Promise.all([
-    range(promql.appCpu(app.name)),
-    range(promql.appMemory(app.name)),
-    range(promql.appResponse(app.name)),
-    instant(promql.appUp(app.name)),
-    instant(promql.appUptime(app.name, '24h')),
-    instant(promql.appUptime(app.name, '7d')),
-    appLogs(app.name, 200),
-    app.domain ? getDomainStatus(app.name).catch(() => undefined) : undefined,
+  const { name } = params
+  // The name goes into PromQL and agent URLs before the app is looked up: only valid names.
+  if (!new RegExp(NAME).test(name)) error(404, 'No such app')
+  // Everything starts at once; only the 404 waits for the app itself.
+  const [app, cpu, memory, response, up, uptimeDay, uptimeWeek, logs] = await Promise.all([
+    getApp(name),
+    range(promql.appCpu(name)),
+    range(promql.appMemory(name)),
+    range(promql.appResponse(name)),
+    instant(promql.appUp(name)),
+    instant(promql.appUptime(name, '24h')),
+    instant(promql.appUptime(name, '7d')),
+    appLogs(name, 200),
   ])
+  if (!app) error(404, 'No such app')
+  // The domain's status asks Cloudflare (several calls): streamed, so the page doesn't wait.
+  const domain = app.domain ? getDomainStatus(name).catch(() => undefined) : undefined
   return { app, metrics: { cpu, memory, response, up, uptimeDay, uptimeWeek }, logs, domain }
 }
 

@@ -1,4 +1,4 @@
-import { projectName } from '@spotcraft/agent/app-spec'
+import { NAME, projectName } from '@spotcraft/agent/app-spec'
 import { VICTORIAMETRICS_URL } from '$app/env/private'
 
 /** A time series as [unix seconds, value] points. */
@@ -57,19 +57,26 @@ export async function range(promql: string, minutes = 60, step = 60): Promise<Se
     .filter(([, v]) => Number.isFinite(v))
 }
 
-// App names are validated (lower-case letters, digits, dashes), so they are safe in a selector.
+// Only valid app names (lower-case letters, digits, dashes) go into a selector; anything else
+// could change the query, so it is refused here whatever the caller checked.
+const appName = new RegExp(NAME)
+const checked = (name: string) => {
+  if (!appName.test(name)) throw new Error(`Not an app name: ${name}`)
+  return name
+}
 const project = (name: string) =>
-  `container_label_com_docker_compose_project="${projectName(name)}"`
+  `container_label_com_docker_compose_project="${projectName(checked(name))}"`
+const probes = (name: string) => `job="probes",app="${checked(name)}"`
 
 export const promql = {
   appCpu: (name: string) => `sum(rate(container_cpu_usage_seconds_total{${project(name)}}[2m]))`,
   appMemory: (name: string) => `sum(container_memory_working_set_bytes{${project(name)}})`,
-  appResponse: (name: string) => `max(probe_duration_seconds{job="probes",app="${name}"})`,
+  appResponse: (name: string) => `max(probe_duration_seconds{${probes(name)}})`,
   // An app has a probe per host (default host, custom domain): reachable only if every host
   // answers, and its uptime averages them, as the app list does.
-  appUp: (name: string) => `min(probe_success{job="probes",app="${name}"})`,
+  appUp: (name: string) => `min(probe_success{${probes(name)}})`,
   appUptime: (name: string, window: string) =>
-    `avg(avg_over_time(probe_success{job="probes",app="${name}"}[${window}]))`,
+    `avg(avg_over_time(probe_success{${probes(name)}}[${window}]))`,
   uptimeByApp: (window: string) =>
     `avg by (app) (avg_over_time(probe_success{job="probes"}[${window}]))`,
   hostCpu: `100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[2m])))`,
