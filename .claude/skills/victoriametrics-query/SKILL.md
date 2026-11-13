@@ -12,6 +12,22 @@ description: >
 
 Query VictoriaMetrics HTTP API directly via curl. Covers instant/range queries, label/series discovery, alerts, rules, instance diagnostics, raw data export, metric usage statistics, and config debugging tools.
 
+## Spotcraft
+
+VictoriaMetrics runs in Spotcraft's own Compose stack (service `victoriametrics`, port 8428). The port is
+not published on the host, so there is no URL to curl from here. Query it over SSH with the container's
+`wget`, read-only endpoints only, and **ask the user before querying production**:
+
+```bash
+q='sum by (name) (container_memory_working_set_bytes{name!=""})'
+ssh deploy@<server> "cd /opt/spotcraft && docker compose exec -T victoriametrics \
+  wget -qO- 'http://127.0.0.1:8428/api/v1/query?query=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$q")'" | jq .
+```
+
+What vmagent scrapes (`scrape.yaml` in the server's infra folder): `node_*` (node-exporter), `container_*`
+(cAdvisor, container in the `name` label) and `probe_*` from blackbox, labelled `app=<name>` for each hosted
+app's public URLs. The dashboard's own queries are in `apps/dashboard/src/lib/server/metrics.ts`.
+
 ## Environment
 
 ```bash
