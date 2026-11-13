@@ -10,6 +10,14 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+### Added
+
+- **Default security headers for apps.** Caddy sends `X-Frame-Options: DENY`, a
+  `Permissions-Policy` that turns off camera, microphone, geolocation, payment and USB, and
+  `Cross-Origin-Opener-Policy: same-origin`, but only when the app doesn't send its own. An app
+  that is meant to be framed, or uses one of those features, sends its own value, or a CSP with
+  `frame-ancestors`. The app's CSP stays its own to set.
+
 ### Changed
 
 - **Deploys have no downtime.** The agent starts the new version in a second slot next to the
