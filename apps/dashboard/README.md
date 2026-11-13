@@ -70,7 +70,9 @@ docker build .                                     # the spotcraft image, from t
   a valid `Cf-Access-Jwt-Assertion` header counts as signed in. It must be signed with one of the
   team's published keys (cached, fetched from `/cdn-cgi/access/certs`), name the team as issuer and
   this app's AUD as audience, and carry an email, which the header shows. The `CF_Authorization`
-  cookie alone doesn't count. Log out also ends the Access sign-in (`/cdn-cgi/access/logout`). If
+  cookie alone doesn't count. Log out also ends the Access sign-in (`/cdn-cgi/access/logout`) and
+  returns to the dashboard, where Access asks for the sign-in again; the CSP's `form-action`
+  allows `https://*.cloudflareaccess.com` for that redirect. If
   the keys can't be fetched, the dashboard logs it and the password login still works.
 - Session cookie: `httpOnly`, `SameSite=Strict`, HMAC-signed with an expiry (7 days).
 - Form posts get SvelteKit's origin check; pages send a nonce-based CSP, `X-Frame-Options: DENY`

@@ -6,7 +6,7 @@ implementation: done
 date: 2026-11-13
 supersedes: [8, 21]
 superseded_by: []
-notes: "Partly supersedes ADR 0008 (the password is no longer the only way in) and ADR 0021 (Access in front of the dashboard now also signs in). Built: Access JWT check, logout through Access, dashboard_settings output, deploy variables."
+notes: "Partly supersedes ADR 0008 (the password is no longer the only way in) and ADR 0021 (Access in front of the dashboard now also signs in). Built: Access JWT check, logout through Access, dashboard_settings output, deploy variables. 0.4.1: Log out passes returnTo (the dashboard) and the CSP form-action allows *.cloudflareaccess.com, so the browser lands on the Access sign-in."
 ---
 
 # A Cloudflare Access sign-in also signs in to the dashboard
