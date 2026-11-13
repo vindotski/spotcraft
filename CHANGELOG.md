@@ -10,6 +10,8 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-13
+
 An address for every app, and Spotcraft behind Cloudflare if you want it
 ([ADR 0021](docs/decisions/0021-cloudflare-edge.md)). Nothing changes until you set the new
 settings.
@@ -39,6 +41,17 @@ settings.
   `CF-Connecting-IP` only from `CADDY_TRUSTED_PROXIES` (loopback unless behind the tunnel).
 - The ops server gets `blackbox.yml` with the probe modules; the Deploy workflow copies it.
 - The Deploy workflow's final check also accepts a redirect to Cloudflare Access.
+- When the agent starts, it rewrites every app's Caddy site for the current `EDGE` and
+  `APPS_DOMAIN` (protecting a protected app's new hosts first), so a mode switch reaches every
+  app without redeploying each one.
+- A failed deploy puts the domain's DNS back exactly as it was, including records a take-over
+  replaced.
+- An app's uptime averages all of its addresses, and "Reachable now" needs every address up.
+- `dev` is now the default branch; `main` holds the released version. The `latest` image tag is
+  published from `main`.
+- Dependencies: Caddy 2.11.9, VictoriaMetrics and vmagent v1.156.0, Node 26.13.1 and refreshed
+  distroless images, SvelteKit 3.2, better-auth 1.7.21, `@types/node` 26 (matching Node 26).
+  TypeScript stays on 6 until `svelte-check` supports 7.
 
 ## [0.2.0] - 2026-11-08
 
@@ -122,6 +135,7 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vindotski/spotcraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.1.0
