@@ -131,11 +131,12 @@
   </div>
 </div>
 
-{#if data.domain && data.domain.hosts.length > 0}
+{#await data.domain then domain}
+{#if domain && domain.hosts.length > 0}
   <section class="mt-8">
     <h2 class="mb-2 font-heading text-lg font-semibold">Domain</h2>
     <ul class="space-y-3">
-      {#each data.domain.hosts as host (host.host)}
+      {#each domain.hosts as host (host.host)}
         <li class="border p-4 text-sm">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="font-mono">{host.host}</span>
@@ -168,6 +169,7 @@
     </ul>
   </section>
 {/if}
+{/await}
 
 <section class="mt-8">
   <h2 class="mb-2 font-heading text-lg font-semibold">Logs</h2>

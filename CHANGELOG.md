@@ -38,6 +38,11 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Changed
 
+- **Performance**: cAdvisor collects only containers' CPU and memory, every 30 seconds, with the
+  Compose project label (about a sixth of the series). An app's page no longer waits for the app
+  before starting its metric queries and logs, and streams its domain status (which asks
+  Cloudflare) instead of waiting for it; the edit page streams Docker Hub's tags. The image
+  build fetches dependencies from the lockfile in their own cached layer.
 - **`@spotcraft/kit` has its own version** ([ADR 0027](docs/decisions/0027-kit-version.md)) and
   its own [changelog](packages/kit/CHANGELOG.md), released with `kit-vX.Y.Z` tags; it stays at
   0.3.0 for now. Spotcraft releases (`vX.Y.Z`) publish the image and the CLI, which pins the

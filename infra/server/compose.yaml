@@ -216,6 +216,15 @@ services:
     image: ghcr.io/google/cadvisor:v0.60.6@sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
     read_only: true
     mem_limit: 256m
+    # Only what the dashboard reads (each container's CPU and memory, found by its Compose
+    # project), every 30 s like the scrape: the defaults scan every cgroup each second and
+    # export every metric family and label, costly on a small server and in VictoriaMetrics.
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --enable_metrics=cpu,memory
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project
     devices:
       - /dev/kmsg
     networks: [web] # scraped by vmagent
