@@ -23,7 +23,7 @@ export interface AppFormValues {
   /** Behind Cloudflare Access (ADR 0021). */
   protected: boolean
   env: string
-  /** Replace the custom domain's existing DNS records; not part of the app's settings. */
+  /** Deploys may replace the custom domain's existing DNS records (ADR 0022). */
   takeOver: boolean
 }
 
@@ -112,6 +112,7 @@ export function parseAppForm(
       readOnly: values.readOnly,
       database: values.database,
       protected: values.protected,
+      takeOver: values.takeOver,
       env,
     },
   }

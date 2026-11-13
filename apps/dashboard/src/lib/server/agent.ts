@@ -52,11 +52,9 @@ export async function getApp(name: string): Promise<AppStatus | undefined> {
 export async function deployApp(
   name: string,
   input: AppInput,
-  /** Replace the custom domain's existing DNS records (ADR 0021). */
-  { takeOver = false } = {},
 ): Promise<{ ok: true; app: AppStatus } | ({ ok: false } & DeployFailure)> {
   const response = await call(
-    `/apps/${name}${takeOver ? '?takeOver=true' : ''}`,
+    `/apps/${name}`,
     { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) },
     300_000,
   )

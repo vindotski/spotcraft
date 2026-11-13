@@ -10,6 +10,15 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+### Changed
+
+- **Taking over a custom domain's DNS records is now an app setting**
+  ([ADR 0022](docs/decisions/0022-takeover-setting.md)). `takeOver` is stored in `app.json`,
+  returned by `GET /apps/:name` and sent in the `PUT` body. The dashboard's checkbox keeps its
+  value, and while it is on every deploy may replace records Spotcraft didn't make.
+  **Breaking (agent API):** the `?takeOver=true` query parameter is gone. Send
+  `"takeOver": true` in the body instead. Existing apps start with it off.
+
 ## [0.3.0] - 2026-11-13
 
 An address for every app, and Spotcraft behind Cloudflare if you want it

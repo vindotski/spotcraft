@@ -169,8 +169,8 @@ describe('custom domains through Cloudflare (ADR 0021)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  const put = (name: string, payload: object, query = '') =>
-    app.inject({ method: 'PUT', url: `/apps/${name}${query}`, headers: auth, payload })
+  const put = (name: string, payload: object) =>
+    app.inject({ method: 'PUT', url: `/apps/${name}`, headers: auth, payload })
   const status = async (name: string) =>
     (await app.inject({ url: `/apps/${name}/domain`, headers: auth })).json()
 
@@ -225,13 +225,44 @@ describe('custom domains through Cloudflare (ADR 0021)', () => {
     )
     assert.equal(cf.at('www.tagtape.app').length, 0, 'nothing changed, www. included')
 
-    const taken = await put('tagtape', { ...spec, domain: 'tagtape.app' }, '?takeOver=true')
+    const taken = await put('tagtape', { ...spec, domain: 'tagtape.app', takeOver: true })
     assert.equal(taken.statusCode, 200, taken.body)
     const types = cf
       .at('tagtape.app')
       .map((r) => r.type)
       .sort()
     assert.deepEqual(types, ['CNAME', 'MX'], 'the A record is replaced; mail stays')
+  })
+
+  it('keeps take-over as a setting: stored, returned, and applied on later deploys', async () => {
+    await put('tagtape', { ...spec, domain: 'go.tagtape.app', takeOver: true })
+    const stored = await app.inject({ url: '/apps/tagtape', headers: auth })
+    assert.equal(stored.json().takeOver, true)
+
+    // A later domain change, sent without the field, still replaces foreign records.
+    cf.add('tagtape.app', {
+      type: 'A',
+      name: 'tagtape.app',
+      content: '203.0.113.7',
+      proxied: false,
+    })
+    const moved = await put('tagtape', { ...spec, domain: 'tagtape.app' })
+    assert.equal(moved.statusCode, 200, moved.body)
+    assert.deepEqual(
+      cf.at('tagtape.app').map((r) => r.type),
+      ['CNAME'],
+    )
+
+    // Turned off, foreign records are refused again.
+    await put('tagtape', { ...spec, domain: 'go.tagtape.app', takeOver: false })
+    cf.add('tagtape.app', {
+      type: 'A',
+      name: 'tagtape.app',
+      content: '203.0.113.8',
+      proxied: false,
+    })
+    const refused = await put('tagtape', { ...spec, domain: 'tagtape.app' })
+    assert.equal(refused.statusCode, 409)
   })
 
   it('makes a custom hostname for a domain outside the account and says what to add', async () => {
@@ -277,7 +308,7 @@ describe('custom domains through Cloudflare (ADR 0021)', () => {
       proxied: false,
     })
     failUp = true
-    const res = await put('tagtape', { ...spec, domain: 'tagtape.app' }, '?takeOver=true')
+    const res = await put('tagtape', { ...spec, domain: 'tagtape.app', takeOver: true })
     assert.equal(res.statusCode, 502)
     const apex = cf.at('tagtape.app')
     assert.deepEqual(
@@ -303,7 +334,7 @@ describe('custom domains through Cloudflare (ADR 0021)', () => {
     cf.failOnceOn(
       (method, path) => method === 'POST' && path.endsWith('/dns_records') && ++creates === 2,
     )
-    const res = await put('tagtape', { ...spec, domain: 'tagtape.app' }, '?takeOver=true')
+    const res = await put('tagtape', { ...spec, domain: 'tagtape.app', takeOver: true })
     assert.equal(res.statusCode, 502)
     assert.deepEqual(
       cf.at('tagtape.app').map((r) => [r.type, r.content]),

@@ -129,7 +129,7 @@
         <span class="text-sm">
           Take over existing DNS records
           <span class="block text-xs text-muted-foreground">
-            Replaces the domain's A, AAAA or CNAME records that Spotcraft didn't make, e.g. ones pointing at an old server. Mail and other records stay.
+            While checked, every deploy may replace the domain's A, AAAA or CNAME records that Spotcraft didn't make, e.g. ones pointing at an old server. Mail and other records stay.
           </span>
         </span>
       </label>

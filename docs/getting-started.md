@@ -124,7 +124,8 @@ In the dashboard, choose **Add app** and fill in:
   - Without Cloudflare: point the domain's A and AAAA records at the **apps server**, or a CNAME
     at `<name>.<apps domain>`.
   - With the Cloudflare agent settings: a domain in your Cloudflare account is set up for you.
-    Tick **Take over existing DNS records** if it still points at an old server. For any other
+    Tick **Take over existing DNS records** if it still points at an old server; while ticked,
+    every deploy may replace records Spotcraft didn't make. For any other
     domain, the app's page shows the CNAME (and any TXT records) to add where its DNS is hosted.
 - **Require sign-in**: with Cloudflare Access, visitors must sign in as one of the owners
   first, for example for a staging app.

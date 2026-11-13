@@ -24,7 +24,7 @@ export const load: PageServerLoad = async ({ params }) => {
       database: app.database,
       protected: app.protected ?? false,
       env: envToText(app.env),
-      takeOver: false,
+      takeOver: app.takeOver ?? false,
     },
     tags: await dockerHubTags(app.image),
   }
@@ -39,7 +39,7 @@ export const actions: Actions = {
     })
     values.name = params.name
     if (!input) return fail(400, { values, errors, deployError: null, output: null })
-    const result = await deployApp(params.name, input, { takeOver: values.takeOver })
+    const result = await deployApp(params.name, input)
     if (!result.ok)
       return fail(502, { values, errors, deployError: result.error, output: result.output ?? null })
     // A new domain or sign-in setting changes the app's probe targets and module.
