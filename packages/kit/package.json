@@ -58,7 +58,7 @@
     "prepack": "node -e \"const fs = require('node:fs'); if (!fs.existsSync('dist')) throw new Error('Build first: pnpm --recursive run build'); for (const f of ['LICENSE', 'NOTICE']) fs.copyFileSync('../../' + f, f)\""
   },
   "dependencies": {
-    "better-auth": "^1.7.18",
+    "better-auth": "^1.7.21",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1"
   },
