@@ -35,6 +35,9 @@ export function postgresDatabases(adminUrl: string): Databases {
   async function inAppDatabase<T>(name: string, fn: (client: pg.Client) => Promise<T>) {
     const client = new pg.Client({ connectionString: appUrl(name) })
     await client.connect()
+    // The app owns its database and could create schemas; every query here is qualified, and a
+    // fixed search_path keeps anything the app made from shadowing what they resolve to.
+    await client.query('SET search_path = pg_catalog, auth')
     try {
       return await fn(client)
     } finally {

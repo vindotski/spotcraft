@@ -498,6 +498,14 @@ describe('protected apps behind Cloudflare Access (ADR 0021)', () => {
     assert.match(custom.json().error, /dashboard's domain/)
     // An app called `dash` would be served at dash.spotcraft.dev.
     assert.equal((await put('dash', spec)).statusCode, 409)
+    // The apps domain's own hosts, such as the custom-hostname fallback origin.
+    for (const domain of ['fallback.spotcraft.dev', 'www.spotcraft.dev']) {
+      const reserved = await put('blog', { ...spec, domain })
+      assert.equal(reserved.statusCode, 409, domain)
+      assert.match(reserved.json().error, /reserved on the apps domain/)
+    }
+    // The apex itself stays allowed (an app may live there).
+    assert.notEqual((await put('home', { ...spec, domain: 'spotcraft.dev' })).statusCode, 409)
     await withDashboard.close()
   })
 

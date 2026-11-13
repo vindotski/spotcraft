@@ -1,7 +1,13 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import Fastify, { type FastifyServerOptions } from 'fastify'
 import type { AppBody } from './app-spec.ts'
-import { appBodySchema, nameParamsSchema, RESERVED_NAMES, servedHosts } from './app-spec.ts'
+import {
+  appBodySchema,
+  isReservedName,
+  nameParamsSchema,
+  RESERVED_NAMES,
+  servedHosts,
+} from './app-spec.ts'
 import { AgentError, type Apps } from './apps.ts'
 
 export interface BuildOptions {
@@ -93,7 +99,7 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
     },
     async (request, reply) => {
       const { name } = request.params
-      if (RESERVED_NAMES.has(name)) {
+      if (isReservedName(name)) {
         return reply.code(400).send({ error: `"${name}" is reserved` })
       }
       // Left out, `database` keeps its current value, so a client that doesn't know the field
@@ -126,6 +132,15 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
       const { dashboardDomain } = apps.settings
       if (dashboardDomain && wanted.includes(dashboardDomain)) {
         return reply.code(409).send({ error: `${dashboardDomain} is the dashboard's domain` })
+      }
+      // The apps domain's reserved hosts (`fallback.`, `www.`…) belong to Spotcraft: taking one
+      // over would replace records OpenTofu manages, such as the custom-hostname fallback origin.
+      const domain = request.body.domain
+      if (appsDomain && domain) {
+        const [label, ...rest] = domain.split('.')
+        if (rest.join('.') === appsDomain && RESERVED_NAMES.has(label)) {
+          return reply.code(409).send({ error: `${domain} is reserved on the apps domain` })
+        }
       }
       for (const other of await apps.list()) {
         if (other.name === name) continue

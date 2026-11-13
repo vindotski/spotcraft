@@ -25,6 +25,9 @@ async function connect(url: string, database?: string): Promise<pg.Client> {
   if (database) target.pathname = `/${database}`
   const client = new Client({ connectionString: target.toString() })
   await client.connect()
+  // Apps own their databases and could create schemas; a fixed search_path keeps them from
+  // shadowing anything the migrations and grants resolve (every name here is qualified anyway).
+  await client.query('SET search_path = pg_catalog, auth')
   return client
 }
 
