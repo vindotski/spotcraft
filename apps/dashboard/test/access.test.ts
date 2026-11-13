@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
-import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
+import { createLocalJWKSet, errors, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { accessConfig, accessVerifier } from '../src/lib/server/access.ts'
 
 const teamDomain = 'example.cloudflareaccess.com'
@@ -68,17 +68,27 @@ describe('Cloudflare Access sign-in (ADR 0023)', () => {
     assert.deepEqual(logged, [])
   })
 
-  it("logs when the signing keys can't be fetched", async () => {
-    const messages: string[] = []
-    const unreachable = accessVerifier(
-      { teamDomain, audience },
-      async () => {
-        throw new TypeError('fetch failed')
-      },
-      (m) => messages.push(m),
-    )
-    assert.equal(await unreachable(request(await sign(valid))), undefined)
-    assert.match(messages[0] ?? '', /can't check sign-in tokens: TypeError: fetch failed/)
+  it("logs when the signing keys can't be fetched or read", async () => {
+    // What jose throws: no connection, a non-200 answer (a plain JOSEError), a timeout, a
+    // key set that isn't one.
+    const failures = [
+      new TypeError('fetch failed'),
+      new errors.JOSEError('Expected 200 OK from the JSON Web Key Set HTTP response'),
+      new errors.JWKSTimeout(),
+      new errors.JWKSInvalid('JSON Web Key Set malformed'),
+    ]
+    for (const failure of failures) {
+      const messages: string[] = []
+      const broken = accessVerifier(
+        { teamDomain, audience },
+        async () => {
+          throw failure
+        },
+        (m) => messages.push(m),
+      )
+      assert.equal(await broken(request(await sign(valid))), undefined)
+      assert.match(messages[0] ?? '', /can't check sign-in tokens/, failure.message)
+    }
   })
 })
 

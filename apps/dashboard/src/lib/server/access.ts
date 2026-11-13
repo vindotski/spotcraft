@@ -1,5 +1,20 @@
 import { createRemoteJWKSet, errors, type JWTVerifyGetKey, jwtVerify } from 'jose'
 
+/**
+ * Errors that only say this token is bad: expired, for another audience, badly signed, or signed
+ * with a key Cloudflare doesn't publish. Anything else (the key set unreachable, a non-200
+ * answer, a broken key set) is a problem with checking, and gets logged.
+ */
+const BAD_TOKEN = new Set<string>([
+  errors.JWTExpired.code,
+  errors.JWTClaimValidationFailed.code,
+  errors.JWTInvalid.code,
+  errors.JWSInvalid.code,
+  errors.JWSSignatureVerificationFailed.code,
+  errors.JWKSNoMatchingKey.code,
+  errors.JOSEAlgNotAllowed.code,
+])
+
 /** Cloudflare Access in front of the dashboard (ADR 0023). */
 export interface AccessConfig {
   /** The Zero Trust team domain, e.g. `example.cloudflareaccess.com`. */
@@ -63,11 +78,8 @@ export function accessVerifier(
     } catch (error) {
       // A bad or expired token is normal; not reaching the keys means everyone falls back to
       // the password, so say so.
-      const invalidToken =
-        error instanceof errors.JOSEError &&
-        !(error instanceof errors.JWKSTimeout) &&
-        !(error instanceof errors.JWKSInvalid)
-      if (!invalidToken) log(`Cloudflare Access: can't check sign-in tokens: ${String(error)}`)
+      const badToken = error instanceof errors.JOSEError && BAD_TOKEN.has(error.code)
+      if (!badToken) log(`Cloudflare Access: can't check sign-in tokens: ${String(error)}`)
       return undefined
     }
   }
