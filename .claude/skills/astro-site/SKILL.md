@@ -5,9 +5,6 @@ description: How Spotcraft's website (apps/site, spotcraft.dev) is built with As
 
 # Astro site (apps/site)
 
-> Target setup from the planned move to Astro and GitHub Pages. While `apps/site` still has a
-> `svelte.config`/SvelteKit routes, that move hasn't landed: treat this as the spec for it.
-
 The website is plain **Astro with no UI framework integration** (no React, Vue or Svelte) and
 **no client-side JavaScript**. Everything is rendered at build time and served by GitHub Pages
 at the domain root (`public/CNAME` = `spotcraft.dev`).
@@ -18,11 +15,12 @@ at the domain root (`public/CNAME` = `spotcraft.dev`).
   directives. If something seems to need JavaScript, ask first: the CSP has no `script-src`
   allowances for it.
 - **Static output:** `output: 'static'`, `site: 'https://spotcraft.dev'`,
-  `build.format: 'directory'` (`/docs/x` → `dist/docs/x/index.html`). No adapter, no SSR,
-  no `prerender = false`.
+  `build.format: 'file'` (`/docs/x` → `dist/docs/x.html`, which Pages serves at `/docs/x`
+  without a redirect). No adapter, no SSR, no `prerender = false`.
 - **Pages** live in `src/pages/`. Dynamic routes export `getStaticPaths()`; an unknown slug has
   no page, and `src/pages/404.astro` becomes `dist/404.html`, which GitHub Pages serves.
-- **Active links** come from `Astro.url.pathname`, computed at build time.
+- **Active links** come from `pagePath(Astro.url)` (`src/lib/path.ts`, strips `.html`), computed at
+  build time.
 - **Raw HTML** from the Markdown renderer goes in with `<Fragment set:html={html} />`. Only
   render the repository's own Markdown that way, never fetched content.
 - **Docs content** is the repository's Markdown (`docs/**/*.md`, `CHANGELOG.md`, package
@@ -47,8 +45,12 @@ pnpm --filter @spotcraft/site build      # astro build → apps/site/dist
 pnpm --filter @spotcraft/site typecheck  # astro check
 ```
 
-After a build, the link check must pass: every old URL still exists and every internal link
-and `#anchor` resolves. It runs in `pnpm verify`.
+The build runs the link check (`scripts/check-links.ts`): every page the site has always had
+exists, every internal link and `#anchor` resolves, and no page has a `<script>`.
+
+To look at the built site, `pnpm --filter @spotcraft/site exec astro preview --port <free port>`.
+In Astro 7 it **detaches** and keeps running: stop it with `astro preview stop` and check the
+port with `lsof` before saying it's stopped.
 
 ## Deployment
 

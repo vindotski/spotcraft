@@ -1,0 +1,21 @@
+---
+// A link styled like @spotcraft/ui's Button (size lg), whose components are Svelte and can't run
+// here. Keep the classes in step with packages/ui/src/components/ui/button/button.svelte.
+interface Props {
+  href: string
+  variant?: 'default' | 'outline'
+  rel?: string
+}
+const { href, variant = 'default', rel } = Astro.props
+
+const base =
+  "focus-visible:border-ring focus-visible:ring-ring/50 rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:ring-3 active:translate-y-px [&_svg:not([class*='size-'])]:size-4 inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-all outline-none select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 h-10 gap-1.5 px-2.5"
+const variants = {
+  default: 'bg-primary text-primary-foreground hover:bg-primary/80',
+  outline:
+    'border-border bg-background hover:bg-muted hover:text-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 shadow-xs',
+}
+---
+
+<!-- biome-ignore lint/a11y/useAnchorContent: the slot is the link's text -->
+<a href={href} rel={rel} class:list={[base, variants[variant]]}><slot /></a>

@@ -1,0 +1,36 @@
+---
+import type { GetStaticPaths } from 'astro'
+import Docs from '../../layouts/Docs.astro'
+import { allSlugs, renderDoc } from '../../lib/docs.ts'
+
+/** Every docs page, including ADRs nothing links to yet. */
+export const getStaticPaths = (() =>
+  allSlugs().map((slug) => ({ params: { slug } }))) satisfies GetStaticPaths
+
+const page = renderDoc(Astro.params.slug as string)
+if (!page) throw new Error(`No docs page for ${Astro.params.slug}`)
+const facts = [page.meta.status, page.meta.date].filter(Boolean).join(' · ')
+---
+
+<Docs title={`${page.title} · Spotcraft docs`}>
+  <article>
+    <header class="mb-8">
+      {
+        page.meta.number && (
+          <p class="font-mono text-sm text-muted-foreground">
+            Decision {page.meta.number.padStart(4, '0')}
+          </p>
+        )
+      }
+      <h1 class="font-heading text-3xl font-bold text-balance">{page.title}</h1>
+      {facts && <p class="mt-2 text-sm text-muted-foreground capitalize">{facts}</p>}
+    </header>
+    <!-- The repository's own Markdown, rendered at build time. -->
+    <div class="doc" set:html={page.html} />
+    <p class="mt-12 border-t pt-4 text-sm text-muted-foreground">
+      <a href={page.source} class="underline underline-offset-4" rel="noopener noreferrer"
+        >View this page on GitHub</a
+      >
+    </p>
+  </article>
+</Docs>
