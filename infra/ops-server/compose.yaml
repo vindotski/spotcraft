@@ -74,6 +74,9 @@ services:
       DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      # Optional, both together: a Cloudflare Access sign-in skips the password (ADR 0023).
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
     volumes:
       - probes:/probes # uptime-probe targets the dashboard writes for vmagent
 

@@ -36,14 +36,16 @@ uptime-probe target per app, which vmagent reads (`file_sd_configs`).
 Checked when the server starts (`src/env.ts`); a missing or invalid value stops it with a
 message naming the variable.
 
-| Env                       | Default                              | Meaning                                       |
-| ------------------------- | ------------------------------------ | --------------------------------------------- |
-| `AGENT_URL`               | —                                    | e.g. `http://10.0.0.2:4000`                   |
-| `AGENT_TOKEN`             | —                                    | same token as the agent, 32+ characters       |
-| `DASHBOARD_PASSWORD_HASH` | —                                    | from the `hash-password` script               |
-| `SESSION_SECRET`          | —                                    | 32+ characters; changing it logs everyone out |
-| `VICTORIAMETRICS_URL`     | `http://victoriametrics:8428`        | metrics query API                             |
-| `PROBES_FILE`             | empty (image: `/probes/probes.json`) | where to write probe targets                  |
+| Env                       | Default                              | Meaning                                                                            |
+| ------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
+| `AGENT_URL`               | —                                    | e.g. `http://10.0.0.2:4000`                                                        |
+| `AGENT_TOKEN`             | —                                    | same token as the agent, 32+ characters                                            |
+| `DASHBOARD_PASSWORD_HASH` | —                                    | from the `hash-password` script                                                    |
+| `SESSION_SECRET`          | —                                    | 32+ characters; changing it logs everyone out                                      |
+| `VICTORIAMETRICS_URL`     | `http://victoriametrics:8428`        | metrics query API                                                                  |
+| `PROBES_FILE`             | empty (image: `/probes/probes.json`) | where to write probe targets                                                       |
+| `CF_ACCESS_TEAM_DOMAIN`   | empty                                | `<team>.cloudflareaccess.com`; with the next, an Access sign-in skips the password |
+| `CF_ACCESS_AUD`           | empty                                | the dashboard Access application's AUD tag; set both or neither                    |
 
 The image also sets the adapter-node proxy settings for running behind Caddy:
 `PROTOCOL_HEADER=x-forwarded-proto`, `ADDRESS_HEADER=X-Forwarded-For`, `XFF_DEPTH=1`.
@@ -52,12 +54,20 @@ The image also sets the adapter-node proxy settings for running behind Caddy:
 pnpm --filter @spotcraft/dashboard hash-password   # prints DASHBOARD_PASSWORD_HASH (asks without echo)
 pnpm --filter @spotcraft/dashboard build           # output in build/, no runtime node_modules needed
 pnpm --filter @spotcraft/dashboard typecheck
+pnpm --filter @spotcraft/dashboard test            # node:test, test/*.test.ts
 docker build -f apps/dashboard/Dockerfile .        # from the repository root
 ```
 
 ## Security
 
-- Every route but `/login` needs a session; `/api/*` answers 401 instead of redirecting.
+- Every route but `/login` needs a session or a Cloudflare Access sign-in; `/api/*` answers 401
+  instead of redirecting.
+- **Access sign-in** (both `CF_ACCESS_*` set, [ADR 0023](../../docs/decisions/0023-access-sign-in.md)):
+  a valid `Cf-Access-Jwt-Assertion` header counts as signed in. It must be signed with one of the
+  team's published keys (cached, fetched from `/cdn-cgi/access/certs`), name the team as issuer and
+  this app's AUD as audience, and carry an email, which the header shows. The `CF_Authorization`
+  cookie alone doesn't count. Log out also ends the Access sign-in (`/cdn-cgi/access/logout`). If
+  the keys can't be fetched, the dashboard logs it and the password login still works.
 - Session cookie: `httpOnly`, `SameSite=Strict`, HMAC-signed with an expiry (7 days).
 - Form posts get SvelteKit's origin check; pages send a nonce-based CSP, `X-Frame-Options: DENY`
   and `Cache-Control: no-store`.

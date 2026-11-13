@@ -12,6 +12,12 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Added
 
+- **One sign-in behind Cloudflare Access** ([ADR 0023](docs/decisions/0023-access-sign-in.md)):
+  with the new `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` variables on the `production`
+  environment, the dashboard accepts Access's signed token and skips its password. Log out
+  also ends the Access sign-in. `infra/cloudflare` has a new `dashboard_settings` output with
+  the AUD. The password login stays for use without Access.
+
 - The dashboard shows the running Spotcraft version in its footer once you're signed in,
   linked to the release notes.
 

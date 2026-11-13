@@ -8,7 +8,7 @@ protects, what it trusts, and the risks it accepts. Report vulnerabilities as de
 
 | Who or what                         | Trusted with                              | Why                                         |
 | ----------------------------------- | ----------------------------------------- | ------------------------------------------- |
-| The operator (dashboard password)   | deploying and removing any app            | one admin by design                         |
+| The operator (password or Access)   | deploying and removing any app            | one admin by design                         |
 | The deploy key (`deploy` user)      | root on both servers                      | the `docker` group is root-equivalent       |
 | GitHub `production` environment     | every secret                              | it runs the deploy                          |
 | The agent                           | root on the apps server                   | it holds the Docker socket                  |
@@ -32,7 +32,11 @@ network or inside Docker.
 from one address within 15 minutes lock that address out. Forms are protected by SvelteKit's
 origin check; pages get a nonce-based Content-Security-Policy, HSTS, `X-Frame-Options: DENY`
 and `Cache-Control: no-store`. With Cloudflare Access in front (`infra/cloudflare`), the owners
-first sign in at Cloudflare with a one-time code, and Cloudflare also rate-limits `/login`.
+first sign in at Cloudflare with a one-time code, and Cloudflare also rate-limits `/login`. With
+`CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set, that sign-in replaces the password: the
+dashboard accepts a request whose `Cf-Access-Jwt-Assertion` header is signed by the team's
+published keys, for the dashboard's own Access application (tokens for protected apps are
+refused), and not expired. The password login stays for use without Access.
 
 **The agent** accepts requests only from the ops server's private address (and its own
 loopback), then only with the bearer token, compared in constant time. Every value it receives

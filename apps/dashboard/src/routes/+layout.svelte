@@ -28,7 +28,10 @@
           <a href={item.href} class={isActive(item.href) ? 'font-medium' : 'text-muted-foreground hover:text-foreground'} aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
         {/each}
       </nav>
-      <form method="POST" action="/logout" class="ml-auto">
+      {#if data.accessEmail}
+        <span class="ml-auto truncate text-sm text-muted-foreground">{data.accessEmail}</span>
+      {/if}
+      <form method="POST" action="/logout" class={data.accessEmail ? '' : 'ml-auto'}>
         <button type="submit" class="text-sm text-muted-foreground hover:text-foreground">Log out</button>
       </form>
     </div>

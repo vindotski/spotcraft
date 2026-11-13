@@ -233,6 +233,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
+      jose:
+        specifier: ^6.2.15
+        version: 6.2.15
       svelte:
         specifier: ^5.57.2
         version: 5.57.3
