@@ -1,4 +1,4 @@
-import { NAME } from '@spotcraft/agent/app-spec'
+import { NAME, projectName } from '@spotcraft/agent/app-spec'
 import { VICTORIAMETRICS_URL } from '$app/env/private'
 
 /** A time series as [unix seconds, value] points. */
@@ -65,7 +65,7 @@ const checked = (name: string) => {
   return name
 }
 const project = (name: string) =>
-  `container_label_com_docker_compose_project="spotcraft-app-${checked(name)}"`
+  `container_label_com_docker_compose_project="${projectName(checked(name))}"`
 const probes = (name: string) => `job="probes",app="${checked(name)}"`
 
 export const promql = {

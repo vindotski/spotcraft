@@ -40,7 +40,7 @@ type Plan =
 
 /**
  * Sets up and removes the DNS for apps' custom domains through the Cloudflare API (ADR 0021).
- * A host whose zone is in the account gets a proxied CNAME to the apps tunnel; any other host
+ * A host whose zone is in the account gets a proxied CNAME to the server's tunnel; any other host
  * becomes a custom hostname on the apps zone, and its owner adds a CNAME to the app's default host.
  */
 export class Domains {

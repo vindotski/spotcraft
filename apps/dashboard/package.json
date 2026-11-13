@@ -5,7 +5,6 @@
   "license": "Apache-2.0",
   "type": "module",
   "imports": {
-    "#lib": "./src/lib/index.js",
     "#lib/*": "./src/lib/*"
   },
   "scripts": {
@@ -24,12 +23,12 @@
     "@sveltejs/adapter-node": "^6.0.2",
     "@sveltejs/kit": "^3.2.0",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
-    "@tailwindcss/vite": "^4.3.5",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
-    "jose": "^6.2.15",
-    "svelte": "^5.57.2",
-    "svelte-check": "^4.6.0",
-    "tailwindcss": "^4.3.5",
+    "jose": "^6.2.17",
+    "svelte": "catalog:",
+    "svelte-check": "catalog:",
+    "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "^8.3.8"
   }

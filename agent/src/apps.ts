@@ -7,13 +7,14 @@ import {
   type DomainStatus,
   defaultHost,
   hostnames,
+  projectName,
   servedHosts,
 } from './app-spec.ts'
 import { CloudflareError } from './cloudflare.ts'
 import { DomainConflict, type Domains } from './domains.ts'
 import type { Runner, RunResult } from './runner.ts'
 import type { AppFiles, Store } from './store.ts'
-import { projectName, renderCompose, renderSite } from './templates.ts'
+import { renderCompose, renderSite } from './templates.ts'
 
 export class AgentError extends Error {
   readonly statusCode: number

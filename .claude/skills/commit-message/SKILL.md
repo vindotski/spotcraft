@@ -1,11 +1,11 @@
 ---
 name: commit-message
-description: Write a Conventional Commits message and commit the current changes in Spotcraft. Use when a step is finished and verified, or when the user asks for a commit. The agent commits and pushes its branch; the user merges and tags.
+description: Write a Conventional Commits message and commit the current changes in Spotcraft. Use when a step is finished and verified, or when the user asks for a commit. The agent commits and pushes its branch; it merges and tags only when the user asks.
 ---
 
 # Commit
 
-You commit finished, verified work with this message and push the feature branch. Never force-push, push to `dev` or `main`, tag or merge: the user merges and tags.
+You commit finished, verified work with this message and push the feature branch. Never force-push or push to `dev` or `main`. Merge and tag only when the user asks (signed tags, `git tag -s`).
 
 ## Steps
 

@@ -20,6 +20,12 @@ engineStrict: true
 allowBuilds:
   esbuild: true
 
+# Shared ranges. Runtime dependencies of the published packages (packages/kit, packages/cli) keep
+# plain ranges: they are published with npm, which does not know the catalog: protocol.
 catalog:
+  "@tailwindcss/vite": ^4.3.5
   "@types/node": ^26.6.6
+  svelte: ^5.57.2
+  svelte-check: ^4.6.0
+  tailwindcss: ^4.3.5
   typescript: ^6.0.3

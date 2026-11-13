@@ -2,7 +2,7 @@
 
 Shared UI for `apps/dashboard` and `apps/site`: [shadcn-svelte](https://shadcn-svelte.com)
 components and the theme (preset `b6RdvRWulu`: the `vega` style, neutral colors, square
-corners, Space Grotesk, lucide icons). Source-only: the apps compile it, there is no build.
+corners, Space Grotesk; lucide icons, added with the first component that needs them). Source-only: the apps compile it, there is no build.
 
 ## Use it in an app
 

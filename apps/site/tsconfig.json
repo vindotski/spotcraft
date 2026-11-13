@@ -3,7 +3,10 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedSideEffectImports": true
   },
   "include": [".astro/types.d.ts", "src", "scripts", "astro.config.ts"],
   "exclude": ["dist"]

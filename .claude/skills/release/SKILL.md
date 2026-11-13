@@ -6,7 +6,8 @@ description: Prepare a Spotcraft or @spotcraft/kit release — version bump, cha
 # Release
 
 The process and what a version promises are in `docs/releasing.md` and ADR 0019; read both
-first, they win over this skill. The user merges, tags and pushes; you prepare and check.
+first, they win over this skill. You prepare and check; you merge and tag only when the user
+asks.
 
 ## Before
 
@@ -29,16 +30,16 @@ first, they win over this skill. The user merges, tags and pushes; you prepare a
 2. In `CHANGELOG.md`, rename `Unreleased` to `[X.Y.Z] - YYYY-MM-DD`, add a fresh empty
    `Unreleased`, and add the compare links at the bottom.
 3. `pnpm verify` passes.
-4. Suggest the commit (`chore(release): X.Y.Z`) and a PR **into `main`** with the changelog
+4. Commit (`chore(release): X.Y.Z`) and open a PR **into `main`** with the changelog
    section as its body. After it merges, `main` must be merged back into `dev`.
 
-## The user then
+## Tagging (when the user asks)
 
 ```bash
-git tag -s vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z   # kit: kit-vA.B.C
+git tag -s vX.Y.Z 'main^{commit}' -m vX.Y.Z && git push origin vX.Y.Z   # kit first: kit-vA.B.C
 ```
 
 CI verifies the tagged commit and publishes the `spotcraft` image (`X.Y.Z`, `X.Y`) and the npm packages.
 Then they run the Deploy workflow with the tag. Afterwards, check the CI run and the published
 versions (`npm view spotcraft version`, `docker manifest inspect`), and tell the user what is
-live. Never create or push tags yourself.
+live. Tags are signed with the local git setup; never move or delete a pushed tag.
