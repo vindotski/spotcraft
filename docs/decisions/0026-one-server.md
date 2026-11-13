@@ -36,7 +36,10 @@ smallest setup that works is one machine.
     allowlist is the dashboard's fixed address there;
   - `db` (internal): the agent and Postgres;
   - `default`: the agent alone, for outbound calls.
-  Hosted apps reach only Caddy and Postgres.
+  Hosted apps reach only Caddy and Postgres. Behind a Cloudflare Tunnel, Caddy trusts
+  `CF-Connecting-IP` from cloudflared's fixed address only and serves the dashboard only to it,
+  since hosted apps also reach Caddy. App names can't be any of the server's service names, and
+  no app may use the dashboard's domain.
 - The Compose project keeps the name `spotcraft-apps`, the OpenTofu server and tunnel keep the
   key `apps` and the name `spotcraft-apps`, so the running server, its volumes, its tunnel and
   the agent's DNS records carry over without being replaced.

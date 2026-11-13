@@ -25,17 +25,22 @@ ran on separate servers, so the existing volumes and container names carry over.
 
 ## Networks
 
-| Network                   | Members                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| `edge` (`spotcraft-edge`) | Caddy, Postgres, every hosted app                          |
-| `web`                     | Caddy, cloudflared, the dashboard and the monitoring       |
-| `control` (internal)      | the dashboard (fixed address `10.255.255.2`) and the agent |
-| `db` (internal)           | the agent and Postgres                                     |
-| `default`                 | the agent alone, for its calls to the Cloudflare API       |
+| Network                   | Members                                                                     |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `edge` (`spotcraft-edge`) | Caddy, Postgres, every hosted app                                           |
+| `web` (`10.255.254.0/27`) | Caddy, cloudflared (fixed `10.255.254.2`), the dashboard and the monitoring |
+| `control` (internal)      | the dashboard (fixed `10.255.255.2`) and the agent                          |
+| `db` (internal)           | the agent and Postgres                                                      |
+| `default`                 | the agent alone, for its calls to the Cloudflare API                        |
 
 Hosted apps reach only Caddy and Postgres. The agent answers only `10.255.255.2`
-(`AGENT_ALLOWED_IPS`), with the bearer token. `edge` and `web` have IPv6 on, so Caddy and the
-dashboard see IPv6 visitors' real addresses; Caddy's published ports go through `edge`.
+(`AGENT_ALLOWED_IPS`), with the bearer token. On `web` and `control`, other services get
+addresses from an `ip_range` that excludes the fixed ones, so none can take them first. `edge`
+has IPv6 on and carries Caddy's published ports, so Caddy sees IPv6 visitors' real addresses.
+
+App names can't shadow the server's services on these networks: the agent reserves `caddy`,
+`cloudflared`, `agent`, `dashboard`, `postgres`, `victoriametrics`, `vmagent`, `blackbox`,
+`node-exporter` and `cadvisor`, and refuses an app host equal to `DASHBOARD_DOMAIN`.
 
 ## Hardening
 
@@ -52,14 +57,17 @@ and read their Compose labels; the dashboard finds each app's metrics by
 Caddy serves the dashboard at `DASHBOARD_DOMAIN` (HSTS, security headers, 1 MB request bodies)
 and imports one site block per hosted app from `sites/`, written by the agent. It passes each
 visitor's address as `X-Forwarded-For` (the dashboard's login lockout keys on it) and trusts
-`CF-Connecting-IP` only from `CADDY_TRUSTED_PROXIES` (loopback by default; `private_ranges`
-behind a Cloudflare Tunnel). With `APPS_DOMAIN`, the agent serves every app at
+`CF-Connecting-IP` only from `CADDY_TRUSTED_PROXIES` (loopback by default; cloudflared's
+`10.255.254.2` behind a Cloudflare Tunnel). The dashboard's site answers only peers in
+`DASHBOARD_PEERS`: anyone in direct mode, only cloudflared behind a tunnel, so nothing on the
+server (a hosted app, say) can reach it around Cloudflare Access, the WAF or the login rate
+limit. With `APPS_DOMAIN`, the agent serves every app at
 `<name>.<APPS_DOMAIN>`; point a wildcard record at this server.
 
 Behind Cloudflare (`EDGE=cloudflare`, ADR 0021), the deploy adds to `.env`:
 `COMPOSE_PROFILES=cloudflare` (starts `cloudflared` with `CLOUDFLARE_TUNNEL_TOKEN`),
-`PUBLIC_BIND=127.0.0.1` (Caddy's ports on loopback only), `CADDY_TRUSTED_PROXIES=private_ranges`
-and `DASHBOARD_SCHEME=http://`. Caddy and the agent's site blocks then serve plain HTTP to
+`PUBLIC_BIND=127.0.0.1` (Caddy's ports on loopback only), `CADDY_TRUSTED_PROXIES` and
+`DASHBOARD_PEERS` set to `10.255.254.2/32`, and `DASHBOARD_SCHEME=http://`. Caddy and the agent's site blocks then serve plain HTTP to
 `cloudflared`; Cloudflare holds the certificates.
 
 ## Monitoring

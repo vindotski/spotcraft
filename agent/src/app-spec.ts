@@ -37,15 +37,22 @@ export const ENV_KEY = '^[A-Za-z_][A-Za-z0-9_]*$'
 export const MEMORY = '^[1-9][0-9]{0,5}[mg]$'
 
 /**
- * Names an app can't take: the server's own services use them, or (as `<name>.<APPS_DOMAIN>`)
- * they would clash with hosts the apps domain keeps for itself (ADR 0021).
+ * Names an app can't take. An app's Compose service is named after it and joins the edge network
+ * that Caddy and Postgres share, so it must not shadow any of the server's own services (Caddy
+ * resolves `dashboard`, Postgres is `postgres`), nor, as `<name>.<APPS_DOMAIN>`, a host the apps
+ * domain keeps for itself (ADR 0021, ADR 0026).
  */
 export const RESERVED_NAMES = new Set([
   'caddy',
+  'cloudflared',
   'agent',
+  'dashboard',
+  'postgres',
+  'victoriametrics',
+  'vmagent',
+  'blackbox',
   'node-exporter',
   'cadvisor',
-  'postgres',
   'www',
   'fallback',
 ])
@@ -104,6 +111,8 @@ export interface AgentSettings {
   dns?: boolean
   /** Apps can be put behind Cloudflare Access. */
   access?: boolean
+  /** The dashboard's host, served by the same Caddy; no app may use it (ADR 0026). */
+  dashboardDomain?: string
 }
 
 /** The custom-domain hosts the agent sets up: the domain, and `www.` for a root domain. */

@@ -42,6 +42,10 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
   the dashboard, Postgres and the monitoring share one Compose stack in `infra/server`, which
   replaces `infra/apps-server` and `infra/ops-server`. Docker networks replace the private
   network: hosted apps reach only Caddy and Postgres, and only the dashboard reaches the agent.
+  Behind a Cloudflare Tunnel, Caddy trusts `CF-Connecting-IP` from cloudflared only and serves
+  the dashboard only to it. The agent also reserves `dashboard`, `cloudflared`,
+  `victoriametrics`, `vmagent` and `blackbox` as app names and refuses `DASHBOARD_DOMAIN` as an
+  app host.
   `infra/hetzner` creates one server and no network; `infra/cloudflare` keeps one tunnel. Add an
   external uptime check on the dashboard's URL, since the monitoring now shares the server.
   **Breaking**, migration from two servers:

@@ -173,6 +173,10 @@ describe('agent', () => {
       app.inject({ method: 'PUT', url: `/apps/${name}`, headers: auth, payload })
     assert.equal((await put('Bad_Name', spec)).statusCode, 400)
     assert.equal((await put('caddy', spec)).statusCode, 400)
+    // The server's own services on the shared networks (ADR 0026).
+    for (const reserved of ['dashboard', 'victoriametrics', 'cloudflared', 'blackbox']) {
+      assert.equal((await put(reserved, spec)).statusCode, 400, reserved)
+    }
     assert.equal((await put('ok', { ...spec, domain: 'evil.app {\n}' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, image: 'UPPER/case' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, tag: '-x' })).statusCode, 400)
