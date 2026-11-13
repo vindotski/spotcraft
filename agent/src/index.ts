@@ -49,11 +49,12 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 
 await app.listen({ host: config.host, port: config.port })
 
-// Sites follow EDGE and APPS_DOMAIN: after either changed, rewrite every app's site. Caddy
+// Recover from a deploy the previous agent didn't finish, lock down older app files, and
+// rewrite every app's site (sites follow EDGE and APPS_DOMAIN, which may have changed). Caddy
 // may still be starting (both start in the same deploy), so a failed reload is retried.
 for (let attempt = 1; attempt <= 24; attempt++) {
   try {
-    const changed = await apps.refreshSites()
+    const changed = await apps.recover()
     if (changed.length > 0)
       app.log.info({ changed }, 'app sites rewritten for the current settings')
     break

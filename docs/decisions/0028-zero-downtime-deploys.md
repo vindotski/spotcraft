@@ -6,7 +6,7 @@ implementation: done
 date: 2026-11-13
 supersedes: []
 superseded_by: []
-notes: "Built in the agent: two slots per app, Caddy moves traffic once the new slot is healthy, the old slot then stops. Apps deployed before move into a slot on their next deploy."
+notes: "Built in the agent: two slots per app, staged files committed once the new slot is healthy, recovery at start. Apps deployed before move into a slot on their next deploy."
 ---
 
 # Deploys start the new version next to the old one
@@ -25,14 +25,20 @@ Apps are deployed often, and from CI once a deploy hook exists, so the gap adds 
   edge network. The project stays the same, so metrics and logs keep finding the app by it.
 - **The app's compose file holds only the live slot.** It is the record of which slot is live.
 - **A deploy uses the other slot:**
-  1. write the compose file with the new slot's service;
-  2. `pull`, then `up -d --wait` for that service only, without `--remove-orphans`, so the live
-     slot keeps serving;
-  3. once it is healthy, point the app's Caddy site at it and reload Caddy (graceful);
+  1. stage the new spec and compose file (`app.next.json`, `compose.next.yaml`), leaving the
+     live ones as they are;
+  2. `pull`, then `up -d --wait` for the new slot's service only, without `--remove-orphans`, so
+     the live slot keeps serving;
+  3. once it is healthy, point the app's Caddy site at it, commit by renaming
+     `compose.next.yaml` to `compose.yaml` (then the spec), and reload Caddy (graceful);
   4. stop the old slot with `docker stop --time 30` (its `stop_grace_period`), so it can finish
      the requests it has, then remove it.
-- **A failed deploy** removes the new slot and puts the previous files back. Traffic never
-  moved, so the live slot isn't restarted.
+- **A failed deploy** removes the new slot and the staged files. Traffic never moved, so the
+  live slot isn't restarted.
+- **An agent that stops mid-deploy** recovers when it starts. It drops staged files that were
+  never committed, finishes a commit cut short between its renames, rewrites the sites from the
+  live compose files, reloads Caddy, and only then removes containers of slots that aren't
+  live. An unverified slot never becomes the live one.
 - **Names ending in `-blue` or `-green` are reserved,** as `app-…` already is: an app called
   `blog-blue` would collide with a slot of `blog`.
 - **Apps deployed before** have one service named after the app. It counts as the live slot:

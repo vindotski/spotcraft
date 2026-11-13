@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -101,6 +101,9 @@ const spec = {
   domain: 'tagtape.app',
   env: { TRUST_PROXY: '1', PRICE: 'costs $5' },
 }
+
+/** `spec` with the defaults the API fills in, for calling `Apps` directly. */
+const fullSpec = { ...spec, port: 3000, memory: '512m', cpus: 1, readOnly: true, database: false }
 
 describe('agent', () => {
   let dir: string
@@ -256,6 +259,69 @@ describe('agent', () => {
       assert.equal(listed.json().apps.length, 1)
     })
 
+    it('recovers from a deploy that stopped before its commit: the live slot stays', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      // As an agent that stopped after starting green, before committing it.
+      const apps = new Apps(new Store(dir), docker.run, 'caddy-test')
+      await new Store(dir).stage('tagtape', {
+        spec: JSON.stringify({ ...fullSpec, name: 'tagtape', tag: '9.9.9' }),
+        compose: JSON.stringify({
+          name: 'spotcraft-app-tagtape',
+          services: { 'tagtape-green': {} },
+        }),
+      })
+      docker.running.add('spotcraft-app-tagtape/tagtape-green')
+      docker.calls.length = 0
+
+      await apps.recover()
+      assert.match(await site(), /reverse_proxy app-tagtape-blue:3000/)
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-blue'])
+      await assert.rejects(stat(join(dir, 'apps/tagtape/compose.next.yaml')))
+      await assert.rejects(stat(join(dir, 'apps/tagtape/app.next.json')))
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.0.0')
+      // Caddy reloads before the stray slot goes.
+      const reload = docker.calls.findIndex((args) => args.includes('reload'))
+      const stop = docker.calls.findIndex((args) => args[0] === 'stop')
+      assert.ok(reload >= 0 && reload < stop, 'reload, then stop')
+    })
+
+    it('recovers from a deploy that committed but never removed the old slot', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      docker.failWhen((args) => args[0] === 'stop')
+      assert.equal((await deploy('2.1.0')).statusCode, 200, 'a failed stop only costs memory')
+      assert.equal(containers().length, 2)
+      docker.failWhen(() => false)
+
+      await new Apps(new Store(dir), docker.run, 'caddy-test').recover()
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-green'])
+      assert.match(await site(), /reverse_proxy app-tagtape-green:3000/)
+    })
+
+    it('finishes a commit that stopped between its two renames', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      const store = new Store(dir)
+      await store.stage('tagtape', {
+        spec: JSON.stringify({ ...fullSpec, name: 'tagtape', tag: '2.1.0' }),
+        compose: JSON.stringify({
+          name: 'spotcraft-app-tagtape',
+          services: { 'tagtape-green': {} },
+        }),
+      })
+      // The compose file was renamed (the commit), the spec wasn't.
+      await rename(
+        join(dir, 'apps/tagtape/compose.next.yaml'),
+        join(dir, 'apps/tagtape/compose.yaml'),
+      )
+      docker.running.add('spotcraft-app-tagtape/tagtape-green')
+
+      await new Apps(store, docker.run, 'caddy-test').recover()
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.1.0')
+      assert.match(await site(), /reverse_proxy app-tagtape-green:3000/)
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-green'])
+    })
+
     it('removes both slots with the app', async () => {
       assert.equal((await deploy('2.0.0')).statusCode, 200)
       docker.running.add('spotcraft-app-tagtape/tagtape-green')
@@ -326,21 +392,19 @@ describe('agent', () => {
     }
   })
 
-  it('locks down app files that an older agent wrote readable by everyone', async () => {
+  it('locks down app files an older agent left readable, in incomplete app directories too', async () => {
     const apps = new Apps(new Store(dir), docker.run, 'caddy-test')
-    await apps.deploy({
-      ...spec,
-      name: 'tagtape',
-      port: 3000,
-      memory: '512m',
-      cpus: 1,
-      readOnly: true,
-      database: false,
-    })
+    await apps.deploy({ ...fullSpec, name: 'tagtape' })
     await chmod(join(dir, 'apps/tagtape/app.json'), 0o644)
-    await apps.refreshSites()
-    const { mode } = await stat(join(dir, 'apps/tagtape/app.json'))
-    assert.equal(mode & 0o777, 0o600)
+    // Not a complete app (no compose file or site), so it isn't listed, but its env is there.
+    await mkdir(join(dir, 'apps/broken'), { recursive: true })
+    await writeFile(join(dir, 'apps/broken/app.json'), '{}', { mode: 0o644 })
+    await writeFile(join(dir, 'apps/broken/secrets.json'), '{}', { mode: 0o644 })
+    await apps.recover()
+    for (const file of ['tagtape/app.json', 'broken/app.json', 'broken/secrets.json']) {
+      const { mode } = await stat(join(dir, 'apps', file))
+      assert.equal(mode & 0o777, 0o600, file)
+    }
   })
 
   it('refuses a domain another app already uses', async () => {

@@ -107,17 +107,25 @@ An app runs in one of two slots, `blue` and `green`: Compose services named `<na
 ([ADR 0028](../docs/decisions/0028-zero-downtime-deploys.md)). Its compose file holds only the
 live slot. `PUT` deploys into the other slot, next to the live one:
 
-1. It writes the files, with the new slot's service in the compose file.
-2. It runs `docker compose pull`, then `docker compose up -d --wait` for that service only (up to
-   120 s for the container to run, and to be healthy if the image has a healthcheck). The live
-   slot keeps serving.
-3. It points the app's Caddy site at the new slot and reloads Caddy.
+1. It stages the new spec and compose file as `app.next.json` and `compose.next.yaml`, next to
+   the live ones.
+2. It runs `docker compose pull`, then `docker compose up -d --wait` for the new slot's service
+   only (up to 120 s for the container to run, and to be healthy if the image has a
+   healthcheck). The live slot keeps serving.
+3. It points the app's Caddy site at the new slot and commits: renaming `compose.next.yaml` to
+   `compose.yaml` makes the new slot the live one. Then it reloads Caddy.
 4. It stops the old slot with `docker stop --time 30`, so it can finish the requests it has, and
    removes it.
 
-If a step fails, the new slot is removed and the previous files are put back. The live slot was
-never stopped, so the app keeps serving its previous version (a new app is removed). The
-response carries the error and the command output. Changes run one at a time.
+If a step fails, the new slot and the staged files are removed. The live slot, its files and
+Caddy were never touched, so the app keeps serving its previous version (a new app is removed).
+The response carries the error and the command output. Changes run one at a time.
+
+When the agent starts, it recovers from a deploy it didn't finish. Files staged but not
+committed are dropped, and a commit cut short between its two renames is finished. Then the
+sites are rewritten for the live slots, Caddy reloads, and any container of a slot that isn't
+live is removed. It also makes the env- and password-bearing files of every app directory
+readable by the agent's user only, complete app or not.
 
 So a deploy has no downtime, but for a few seconds both versions run against the app's
 database: an app's migrations must only add. Its memory briefly doubles. An image without a
@@ -135,8 +143,8 @@ requests to Caddy.
 
 Every app container gets: no Linux capabilities, `no-new-privileges`, memory/CPU/pids
 limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy reaches it as
-`app-<name>-<slot>`. Its `app.json` (which holds the env) and compose file (which also holds
-`DATABASE_URL`) are readable by the agent's user only; the agent fixes older files at start.
+`app-<name>-<slot>`. Its `app.json` (which holds the env), compose file (which also holds
+`DATABASE_URL`) and `secrets.json` are readable by the agent's user only.
 
 ## App databases
 
