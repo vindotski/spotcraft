@@ -1,7 +1,4 @@
-import { type AgentSettings, type AppSpec, hostnames } from './app-spec.ts'
-
-/** Project name for an app's compose stack (also its container name prefix). */
-export const projectName = (name: string) => `spotcraft-app-${name}`
+import { type AgentSettings, type AppSpec, hostnames, projectName } from './app-spec.ts'
 
 /** Caddy reaches each app by this alias on the shared edge network. */
 export const upstreamAlias = (name: string) => `app-${name}`

@@ -38,7 +38,7 @@ message naming the variable.
 
 | Env                       | Default                                | Meaning                                                                            |
 | ------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------- |
-| `AGENT_URL`               | —                                      | e.g. `http://10.0.0.2:4000`                                                        |
+| `AGENT_URL`               | —                                      | e.g. `http://agent:4000`                                                           |
 | `AGENT_TOKEN`             | —                                      | same token as the agent, 32+ characters                                            |
 | `DASHBOARD_PASSWORD_HASH` | —                                      | from the `hash-password` script                                                    |
 | `SESSION_SECRET`          | —                                      | 32+ characters; changing it logs everyone out                                      |

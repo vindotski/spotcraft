@@ -74,6 +74,8 @@ jobs:
             exit 1
           fi
       - run: pnpm check
+      # Shell scripts that run in CI or on the server (shellcheck comes with the runner image).
+      - run: shellcheck infra/remote-deploy.sh scripts/npm-publish.sh
       - run: pnpm check:versions
       - run: pnpm typecheck
       - run: pnpm test
@@ -88,6 +90,24 @@ jobs:
             docker run --rm -v "$PWD/infra:/infra" -w "/infra/$module" -e TF_DATA_DIR=/tmp/tf --entrypoint sh "$TOFU" \
               -c 'tofu fmt -check -diff && tofu init -backend=false -input=false -lockfile=readonly >/dev/null && tofu validate'
           done
+
+  # The npm packages promise Node 24 (`engines`), while everything else runs on .nvmrc's Node:
+  # their tests run on 24 too.
+  node24:
+    name: kit and CLI on Node 24
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @spotcraft/kit... --filter spotcraft...
+      - run: pnpm --filter @spotcraft/kit --filter spotcraft test
 
   # Needs the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN to push.
   images:

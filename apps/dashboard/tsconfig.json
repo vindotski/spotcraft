@@ -3,7 +3,10 @@
   "compilerOptions": {
     "strict": true,
     "allowImportingTsExtensions": true,
-    "types": ["$app/types", "node"]
+    "types": ["$app/types", "node"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedSideEffectImports": true
   },
   "include": ["src", "scripts", "test", "vite.config.ts"]
 }

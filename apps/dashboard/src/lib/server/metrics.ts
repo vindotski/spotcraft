@@ -1,3 +1,4 @@
+import { projectName } from '@spotcraft/agent/app-spec'
 import { VICTORIAMETRICS_URL } from '$app/env/private'
 
 /** A time series as [unix seconds, value] points. */
@@ -58,7 +59,7 @@ export async function range(promql: string, minutes = 60, step = 60): Promise<Se
 
 // App names are validated (lower-case letters, digits, dashes), so they are safe in a selector.
 const project = (name: string) =>
-  `container_label_com_docker_compose_project="spotcraft-app-${name}"`
+  `container_label_com_docker_compose_project="${projectName(name)}"`
 
 export const promql = {
   appCpu: (name: string) => `sum(rate(container_cpu_usage_seconds_total{${project(name)}}[2m]))`,
