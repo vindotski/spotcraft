@@ -14,6 +14,6 @@
       "Bash(tofu fmt:*)",
       "Bash(tofu validate:*)"
     ],
-    "deny": ["Bash(git push:*)", "Bash(git tag:*)"]
+    "deny": ["Bash(git tag:*)", "Bash(git push --force:*)", "Bash(git push -f:*)"]
   }
 }

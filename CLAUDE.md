@@ -33,8 +33,9 @@ user's checkout without asking; they leave orphaned processes on 3000/5173.
 
 - **Branches:** `dev` is the default; branch from it and open PRs into it. `main` is production;
   releases are `vX.Y.Z` tags on `main` (`docs/releasing.md`, skill `release`).
-- **Commits:** commit each finished, verified step with a Conventional Commits message (skill
-  `commit-message`). The user pushes, tags and merges; never run `git push` or `git tag`.
+- **Commits and PRs:** commit each finished, verified step with a Conventional Commits message
+  (skill `commit-message`), push the branch and open a PR into `dev`. Never force-push, push to
+  `dev` or `main` directly, tag, or merge: the user merges and tags.
 - **Decisions** get an ADR in `docs/decisions/` (skill `adr`); a changed decision gets a new ADR
   that supersedes the old one.
 - **Docs move with the code:** update the package README and the `Unreleased` section of

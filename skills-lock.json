@@ -11,7 +11,7 @@
     },
     "commit-message": {
       "source": "local",
-      "note": "Written for Spotcraft (adapted from vinskiano): Conventional Commits, summary at most 50 characters; the agent commits, the user pushes."
+      "note": "Written for Spotcraft (adapted from vinskiano): Conventional Commits, summary at most 50 characters; the agent commits and pushes its branch, the user merges."
     },
     "docker-build-strategies": {
       "source": "https://github.com/docker/skills",
