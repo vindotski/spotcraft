@@ -80,9 +80,6 @@ jobs:
           - image: dashboard
             dockerfile: apps/dashboard/Dockerfile
             description: Spotcraft dashboard, manages and monitors the apps
-          - image: site
-            dockerfile: apps/site/Dockerfile
-            description: The Spotcraft website (spotcraft.dev), hosted on Spotcraft
     env:
       PUSH: ${{ github.event_name == 'push' }}
     steps:

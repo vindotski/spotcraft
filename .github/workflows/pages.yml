@@ -1,0 +1,59 @@
+name: Pages
+
+# The website, spotcraft.dev: built from main (the released docs) and published on GitHub Pages
+# (ADR 0024). The repository's Pages source is "GitHub Actions", its custom domain spotcraft.dev,
+# and the github-pages environment allows deploys from main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/site/**
+      - docs/**
+      - CHANGELOG.md
+      - packages/*/CHANGELOG.md
+      - packages/ui/**
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @spotcraft/site...
+      # Also checks that every page and internal link is there (scripts/check-links.ts).
+      - run: pnpm --filter @spotcraft/site build
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: apps/site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
