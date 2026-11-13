@@ -10,12 +10,12 @@
 
 <svelte:head><title>Server · Spotcraft</title></svelte:head>
 
-<h1 class="mb-6 font-heading text-2xl font-bold">Apps server</h1>
+<h1 class="mb-6 font-heading text-2xl font-bold">Server</h1>
 
 {#if data.cpu === null && data.memory === null}
   <Alert class="mb-6">
     <AlertTitle>No metrics yet</AlertTitle>
-    <AlertDescription>VictoriaMetrics has no data from the apps server. It appears a minute after both servers are up.</AlertDescription>
+    <AlertDescription>VictoriaMetrics has no data from the server yet. It appears a minute after Spotcraft starts.</AlertDescription>
   </Alert>
 {/if}
 

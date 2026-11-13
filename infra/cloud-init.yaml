@@ -1,8 +1,8 @@
 #cloud-config
-# First boot of a Spotcraft server (Debian 12/13 or Ubuntu 24.04+), apps or ops.
-# A template: OpenTofu (infra/hetzner) fills in `role` (apps or ops) and `deploy_ssh_key`
-# (the deploy key's public half) wherever they appear in dollar-brace placeholders. On another
-# provider, replace those placeholders by hand and paste the result as the server's user data.
+# First boot of the Spotcraft server (Debian 12/13 or Ubuntu 24.04+).
+# A template: OpenTofu (infra/hetzner) fills in `deploy_ssh_key` (the deploy key's public half)
+# wherever it appears in a dollar-brace placeholder. On another provider, replace it by hand
+# and paste the result as the server's user data.
 
 # Only key logins, and only as the deploy user.
 disable_root: true
@@ -65,16 +65,16 @@ runcmd:
   # The deploy user runs Compose (the docker group is root-equivalent: guard this key).
   - usermod -aG docker deploy
   - install -d -o deploy -g deploy /opt/spotcraft
-  # On the apps server the agent (uid 1000 in its image) writes app and site files.
-  - if [ "${role}" = "apps" ]; then install -d -o 1000 -g 1000 /opt/spotcraft/apps /opt/spotcraft/sites; fi
-  # Firewall: SSH and HTTP(S) from anywhere, everything from the private network.
-  # Docker-published ports bypass ufw, which is why internal services bind to the private IP.
+  # The agent (uid 1000 in its image) writes app and site files.
+  - install -d -o 1000 -g 1000 /opt/spotcraft/apps /opt/spotcraft/sites
+  # Firewall: SSH and HTTP(S) from anywhere.
+  # Docker-published ports bypass ufw, which is why only Caddy is published; everything else
+  # is reachable on Docker networks only.
   - ufw default deny incoming
   - ufw default allow outgoing
   - ufw allow 22/tcp
   - ufw allow 80/tcp
   - ufw allow 443
-  - ufw allow from 10.0.0.0/16
   - ufw --force enable
   - systemctl reload ssh
-  - echo "spotcraft ${role} server ready" > /var/log/spotcraft-ready
+  - echo "spotcraft server ready" > /var/log/spotcraft-ready

@@ -2,7 +2,7 @@ import { chmod, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises
 import { join } from 'node:path'
 import type { AppSpec } from './app-spec.ts'
 
-/** Everything the apps server knows about one app; the files are the only record. */
+/** Everything the server knows about one app; the files are the only record. */
 export interface AppFiles {
   spec: string
   compose: string
@@ -66,7 +66,10 @@ export class Store {
     await mkdir(this.appDir(name), { recursive: true })
     await mkdir(join(this.dataDir, 'sites'), { recursive: true })
     await writeFile(join(this.appDir(name), 'app.json'), files.spec)
-    await writeFile(this.composePath(name), files.compose)
+    // It carries DATABASE_URL, with the app's database password: the agent's user only, like
+    // secrets.json (chmod as well: the mode only applies when the file is created).
+    await writeFile(this.composePath(name), files.compose, { mode: 0o600 })
+    await chmod(this.composePath(name), 0o600)
     await writeFile(this.sitePath(name), files.site)
   }
 
@@ -81,6 +84,13 @@ export class Store {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}
       throw error
     }
+  }
+
+  /** Makes the app's compose file the agent's alone, as written before that was the rule. */
+  async lockDownCompose(name: string) {
+    await chmod(this.composePath(name), 0o600).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error
+    })
   }
 
   /** Readable by the agent's user only. */

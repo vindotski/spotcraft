@@ -1,33 +1,23 @@
 {
   "name": "@spotcraft/site",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
-  "imports": {
-    "#lib": "./src/lib/index.js",
-    "#lib/*": "./src/lib/*"
-  },
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "start": "node build",
-    "prepare": "svelte-kit sync || echo \"\"",
-    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "dev": "astro dev",
+    "build": "astro build && node scripts/check-links.ts",
+    "preview": "astro preview",
+    "typecheck": "astro check"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.12",
     "@spotcraft/ui": "workspace:*",
-    "@sveltejs/adapter-node": "^6.0.2",
-    "@sveltejs/kit": "^3.2.0",
-    "@sveltejs/vite-plugin-svelte": "^7.2.0",
-    "@tailwindcss/vite": "^4.3.5",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
+    "astro": "^7.4.11",
     "marked": "^18.2.0",
-    "svelte": "^5.57.2",
-    "svelte-check": "^4.6.0",
-    "tailwindcss": "^4.3.5",
-    "typescript": "catalog:",
-    "vite": "^8.3.8"
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:"
   }
 }

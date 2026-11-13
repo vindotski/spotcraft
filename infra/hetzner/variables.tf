@@ -1,17 +1,17 @@
 variable "apps_server_type" {
-  description = "Apps server size. cax21 (4 Ampere vCPU, 8 GB) fits about ten small-to-mid SSR apps."
+  description = "Server size. cax21 (4 Ampere vCPU, 8 GB) runs Spotcraft (about 4 GB with its limits) plus a few small-to-mid SSR apps."
   type        = string
   default     = "cax21"
 }
 
 variable "apps_server_backups" {
-  description = "Hetzner's daily backups of the apps server (7 kept, +20% of its price). It holds the app list (/opt/spotcraft/apps)."
+  description = "Hetzner's daily backups of the server (7 kept, +20% of its price). It holds the app list (/opt/spotcraft/apps) and the app databases."
   type        = bool
   default     = false
 }
 
 variable "deploy_ssh_public_key" {
-  description = "Public key of the deploy user on both servers (one line, e.g. \"ssh-ed25519 AAAA... spotcraft-deploy\")."
+  description = "Public key of the deploy user on the server (one line, e.g. \"ssh-ed25519 AAAA... spotcraft-deploy\")."
   type        = string
 
   validation {
@@ -21,7 +21,7 @@ variable "deploy_ssh_public_key" {
 }
 
 variable "edge" {
-  description = "direct: Caddy is public on ports 80 and 443. cloudflare: traffic arrives through Cloudflare Tunnels (infra/cloudflare), so those ports are closed (ADR 0021)."
+  description = "direct: Caddy is public on ports 80 and 443. cloudflare: traffic arrives through a Cloudflare Tunnel (infra/cloudflare), so those ports are closed (ADR 0021)."
   type        = string
   default     = "direct"
 
@@ -39,7 +39,7 @@ variable "hcloud_token" {
 }
 
 variable "location" {
-  description = "Hetzner location for both servers. ARM (cax) servers are in fsn1, nbg1 and hel1."
+  description = "Hetzner location of the server. ARM (cax) servers are in fsn1, nbg1 and hel1."
   type        = string
   default     = "fsn1"
 
@@ -49,14 +49,8 @@ variable "location" {
   }
 }
 
-variable "ops_server_type" {
-  description = "Ops server size (dashboard and monitoring). cax11 is 2 Ampere vCPU, 4 GB."
-  type        = string
-  default     = "cax11"
-}
-
 variable "protect_servers" {
-  description = "Turn on Hetzner's delete and rebuild protection, so a stray destroy can't remove the servers."
+  description = "Turn on Hetzner's delete and rebuild protection, so a stray destroy can't remove the server."
   type        = bool
   default     = true
 }

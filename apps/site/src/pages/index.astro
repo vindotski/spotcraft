@@ -1,0 +1,172 @@
+---
+import ButtonLink from '../components/ButtonLink.astro'
+import GitHubIcon from '../components/GitHubIcon.astro'
+import Base from '../layouts/Base.astro'
+import { GITHUB } from '../lib/site.ts'
+
+const description =
+  'Self-hosted deployment for a handful of web apps. Give it a Docker image and a domain; it runs the app behind HTTPS, watches it, and shows everything in one dashboard.'
+
+const strengths = [
+  {
+    title: 'Deploy from a form',
+    text: 'Image, tag, domain, limits and environment variables. Recent tags come straight from Docker Hub.',
+  },
+  {
+    title: 'An address for every app',
+    text: 'Every app is live at its own subdomain the moment it deploys; a custom domain is one CNAME. HTTPS is automatic.',
+  },
+  {
+    title: 'Rollback on failure',
+    text: 'A deploy waits until the new container is healthy. If anything fails, the previous version keeps running.',
+  },
+  {
+    title: 'Monitoring built in',
+    text: 'Uptime and response time from outside, CPU and memory per app, host load, and every app’s logs.',
+  },
+  {
+    title: 'Hardened by default',
+    text: 'Apps run read-only, without Linux capabilities, with limits. Optionally behind Cloudflare, with the server’s ports closed.',
+  },
+  {
+    title: 'Your server, your secrets',
+    text: 'One plain VPS you own. Every secret lives in your GitHub environment, never in a file or an image.',
+  },
+]
+
+const steps = [
+  {
+    title: 'Create a server',
+    text: 'An OpenTofu module does it on Hetzner Cloud in one apply; any Debian or Ubuntu VPS works with the first-boot script.',
+  },
+  {
+    title: 'Deploy Spotcraft',
+    text: 'Fill in a GitHub environment and run the Deploy workflow. It sets up the server and checks the dashboard from outside.',
+  },
+  {
+    title: 'Add your apps',
+    text: 'Log in and add an image. It’s live at its own subdomain; bring your own domain whenever you like.',
+  },
+]
+
+const stack = [
+  { name: 'Caddy', href: 'https://caddyserver.com', role: 'HTTPS, certificates and the reverse proxy in front of every app.' },
+  { name: 'Docker', href: 'https://www.docker.com', role: 'Every app is a container; every deploy is Docker Compose.' },
+  { name: 'VictoriaMetrics', href: 'https://victoriametrics.com', role: 'Stores the metrics and uptime the dashboard draws.' },
+  { name: 'SvelteKit', href: 'https://svelte.dev', role: 'The dashboard.' },
+  { name: 'Astro', href: 'https://astro.build', role: 'This site, built to static pages.' },
+  { name: 'Fastify', href: 'https://fastify.dev', role: 'The agent that deploys the apps.' },
+  { name: 'OpenTofu', href: 'https://opentofu.org', role: 'Creates the server on Hetzner and, optionally, the Cloudflare tunnel, DNS and Access.' },
+]
+---
+
+<Base title="Spotcraft: your apps, your server" description={description}>
+
+<!-- Hero -->
+<section class="border-b">
+  <div class="mx-auto max-w-6xl px-4 pt-16 pb-12 sm:pt-24">
+    <h1 class="max-w-3xl font-heading text-4xl leading-tight font-bold tracking-tight text-balance sm:text-6xl">Your apps, your server.</h1>
+    <p class="mt-6 max-w-2xl text-lg text-pretty text-muted-foreground">{description}</p>
+    <div class="mt-8 flex flex-wrap gap-3">
+      <ButtonLink href="/docs/getting-started">Get started</ButtonLink>
+      <ButtonLink href={GITHUB} variant="outline" rel="noopener noreferrer"><GitHubIcon /> GitHub</ButtonLink>
+    </div>
+    <picture>
+      <source srcset="/screenshots/app-dark.webp" media="(prefers-color-scheme: dark)" />
+      <img src="/screenshots/app-light.webp" alt="The Spotcraft dashboard showing an app's status, uptime, CPU, memory and response time, its settings, and its logs." width="1280" height="800" class="mt-14 w-full border shadow-sm" fetchpriority="high" />
+    </picture>
+  </div>
+</section>
+
+<!-- Statement -->
+<section class="border-b">
+  <div class="mx-auto grid max-w-6xl gap-6 px-4 py-16 sm:grid-cols-[1fr_2fr] sm:py-20">
+    <h2 class="font-heading text-2xl font-bold sm:text-3xl">Small on purpose</h2>
+    <div class="space-y-4 text-lg text-muted-foreground">
+      <p>Spotcraft is for one person running a handful of server-rendered apps on a server they own. Not a platform, not a cluster.</p>
+      <p>There is no build step (your CI publishes images), no database to look after (the app list is a folder of files), and nothing between your apps and the internet but Caddy.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Core strengths -->
+<section class="border-b">
+  <div class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+    <h2 class="font-heading text-2xl font-bold sm:text-3xl">What you get</h2>
+    <ul class="mt-10 grid gap-px border bg-border sm:grid-cols-2 lg:grid-cols-3">
+      {strengths.map((item) => (
+        <li class="bg-background p-6">
+          <h3 class="font-heading font-semibold">{item.title}</h3>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">{item.text}</p>
+        </li>
+))}
+    </ul>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="border-b">
+  <div class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+    <h2 class="font-heading text-2xl font-bold sm:text-3xl">How it works</h2>
+    <p class="mt-4 max-w-2xl text-muted-foreground">One server runs everything. Hosted apps share a network with Caddy and Postgres only; the dashboard, the agent and the monitoring sit on networks the apps can't reach.</p>
+
+    <svg viewBox="0 0 640 250" class="mt-10 w-full max-w-3xl text-foreground" role="img" aria-labelledby="diagram-title">
+      <title id="diagram-title">One server. Caddy faces the internet and proxies to the app containers and to the dashboard. The app containers can reach Postgres. The dashboard calls the agent, which deploys apps through Docker, and reads metrics from VictoriaMetrics, fed by vmagent, the uptime probes and the exporters.</title>
+      <g font-family="inherit" font-size="13" fill="currentColor">
+        <text x="320" y="16" text-anchor="middle" class="fill-muted-foreground">internet · 80 / 443 or a Cloudflare Tunnel</text>
+        <path d="M320 24 V48" stroke="currentColor" stroke-width="1.5" />
+        <rect x="20" y="48" width="600" height="190" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <text x="36" y="74" font-weight="700" font-size="14">your server</text>
+        <text x="270" y="74">Caddy (HTTPS)</text>
+        <rect x="36" y="94" width="270" height="120" fill="none" stroke="currentColor" stroke-dasharray="4 4" />
+        <text x="52" y="120">your app containers</text>
+        <text x="52" y="146">Postgres</text>
+        <text x="52" y="196" class="fill-muted-foreground">apps' network</text>
+        <rect x="334" y="94" width="270" height="120" fill="none" stroke="currentColor" stroke-dasharray="4 4" />
+        <text x="350" y="120">dashboard → agent</text>
+        <text x="350" y="146">VictoriaMetrics · vmagent</text>
+        <text x="350" y="168">probes · exporters</text>
+        <text x="350" y="196" class="fill-muted-foreground">Spotcraft's own networks</text>
+      </g>
+    </svg>
+
+    <ol class="mt-12 grid gap-8 sm:grid-cols-3">
+      {steps.map((step, index) => (
+        <li>
+          <p class="font-mono text-sm text-muted-foreground">0{index + 1}</p>
+          <h3 class="mt-1 font-heading font-semibold">{step.title}</h3>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">{step.text}</p>
+        </li>
+))}
+    </ol>
+  </div>
+</section>
+
+<!-- Built on -->
+<section class="border-b">
+  <div class="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+    <h2 class="font-heading text-2xl font-bold sm:text-3xl">Built on good tools</h2>
+    <p class="mt-4 max-w-2xl text-muted-foreground">Spotcraft is mostly glue. The heavy lifting is done by software that is better at it than anything new would be.</p>
+    <ul class="mt-10 grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+      {stack.map((tool) => (
+        <li>
+          <a href={tool.href} class="font-heading font-semibold underline-offset-4 hover:underline" rel="noopener noreferrer">{tool.name}</a>
+          <p class="mt-1 text-sm text-muted-foreground">{tool.role}</p>
+        </li>
+))}
+    </ul>
+  </div>
+</section>
+
+<!-- Closing call to action -->
+<section>
+  <div class="mx-auto max-w-6xl px-4 pt-20 text-center">
+    <h2 class="font-heading text-3xl font-bold sm:text-4xl">Ready to run your own?</h2>
+    <p class="mx-auto mt-4 max-w-xl text-muted-foreground">One server, one workflow run, then apps from a form. The guide takes about half an hour.</p>
+    <div class="mt-8 flex flex-wrap justify-center gap-3">
+      <ButtonLink href="/docs/getting-started">Get started</ButtonLink>
+      <ButtonLink href={GITHUB} variant="outline" rel="noopener noreferrer"><GitHubIcon /> GitHub</ButtonLink>
+    </div>
+  </div>
+</section>
+</Base>

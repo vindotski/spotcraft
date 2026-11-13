@@ -1,3 +1,6 @@
 import type { LayoutServerLoad } from './$types'
 
-export const load: LayoutServerLoad = ({ locals }) => ({ authed: locals.authed })
+export const load: LayoutServerLoad = ({ locals }) => ({
+  authed: locals.authed,
+  accessEmail: locals.accessEmail,
+})

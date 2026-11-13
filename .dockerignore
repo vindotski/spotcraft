@@ -1,5 +1,7 @@
 **/node_modules
 **/build
+**/dist
+**/.astro
 **/.svelte-kit
 .git
 .claude
@@ -9,7 +11,7 @@
 **/.env
 **/.env.*
 !**/.env.example
-infra/hetzner/.terraform
+**/.terraform
 **/*.tfstate
 **/*.tfstate.*
 **/*.tfvars

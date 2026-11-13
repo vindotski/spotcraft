@@ -6,9 +6,9 @@ records you made by hand stay.
 
 | Resource                                     | What                                                                          |
 | -------------------------------------------- | ----------------------------------------------------------------------------- |
-| tunnels `spotcraft-apps`, `spotcraft-ops`    | one per server, managed here; every request goes to that server's Caddy       |
-| `*.<apps_domain>` (proxied CNAME)            | every app's default host, through the apps tunnel                             |
-| `<dashboard_domain>` (proxied CNAME)         | the dashboard, through the ops tunnel                                         |
+| tunnel `spotcraft-apps`                      | managed here; every request goes to the server's Caddy (ADR 0026)             |
+| `*.<apps_domain>` (proxied CNAME)            | every app's default host, through the tunnel                                  |
+| `<dashboard_domain>` (proxied CNAME)         | the dashboard, through the same tunnel                                        |
 | `fallback.<apps_domain>` + fallback origin   | with `custom_hostnames`: Cloudflare for SaaS for domains outside it           |
 | zone settings                                | SSL Full (strict), Always Use HTTPS, TLS 1.2+, HTTP/3, Rocket Loader off      |
 | bot management                               | Bot Fight Mode and "Block AI bots", both off by default                       |
@@ -23,11 +23,13 @@ module doesn't change them.
 
 - Every zone (`apps_domain`, the dashboard's zone, `extra_zones`) is active in the account.
 - **Access** (`access_emails`): Zero Trust is set up once in the Cloudflare dashboard (a team
-  name and the free plan). One-time PIN login is on by default.
+  name and the free plan). One-time PIN login is on by default. The `dashboard_settings`
+  output's `CF_ACCESS_AUD`, plus `CF_ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`), let
+  that sign-in skip the dashboard's password (ADR 0023).
 - **Custom hostnames** (`custom_hostnames = true`): on the apps zone, open **SSL/TLS → Custom
   Hostnames** and enable Cloudflare for SaaS. The first 100 hostnames are free.
 - If the wildcard or the dashboard's host already has a record (e.g. an A record pointing at the
-  ops server), delete it right before the apply, or import it:
+  server), delete it right before the apply, or import it:
   `tofu import 'cloudflare_dns_record.dashboard[0]' '<zone id>/<record id>'`.
 
 ## API tokens
@@ -38,7 +40,7 @@ This module's token:
 
 | Scope   | Permission                      | Why                                  |
 | ------- | ------------------------------- | ------------------------------------ |
-| Account | Cloudflare Tunnel: Edit         | the two tunnels and their ingress    |
+| Account | Cloudflare Tunnel: Edit         | the tunnel and its ingress           |
 | Account | Access: Apps and Policies: Edit | the owners policy, the dashboard app |
 | Zone    | Zone: Read                      | look up zones                        |
 | Zone    | DNS: Edit                       | wildcard, dashboard, fallback        |
@@ -47,7 +49,7 @@ This module's token:
 | Zone    | Bot Management: Edit            | bot switches                         |
 | Zone    | SSL and Certificates: Edit      | fallback origin for custom hostnames |
 
-The agent's token (`CLOUDFLARE_API_TOKEN` on the apps server), for custom domains and protected
+The agent's token (`CLOUDFLARE_API_TOKEN` on the server), for custom domains and protected
 apps:
 
 | Scope   | Permission                      | Zones                                     |
@@ -67,7 +69,7 @@ tofu plan
 tofu apply
 ```
 
-Then follow the printed `next_steps`. Put the tunnel tokens and the agent settings in the GitHub
+Then follow the printed `next_steps`. Put the tunnel token and the agent settings in the GitHub
 `production` environment, deploy with `EDGE=cloudflare`, and close ports 80 and 443 with
 `edge = "cloudflare"` in `infra/hetzner`.
 
@@ -78,16 +80,16 @@ private, and keep a copy somewhere safe.
 
 The switch takes a short, planned outage. Behind a tunnel, Caddy serves plain HTTP to
 `cloudflared` only. So from the moment Spotcraft is deployed with `EDGE=cloudflare` until
-visitors' DNS points at the tunnels, the old A and AAAA records lead nowhere. Keep that window
+visitors' DNS points at the tunnel, the old A and AAAA records lead nowhere. Keep that window
 small:
 
-1. Apply with `route_dns = false`. This creates the tunnels and settings but changes no records,
+1. Apply with `route_dns = false`. This creates the tunnel and settings but changes no records,
    and Access only takes effect on proxied records. Nothing changes for visitors yet.
 2. A day before, lower the TTL of the existing A and AAAA records (the dashboard's, the
    wildcard's, and each app's domain) to 60 seconds, so resolvers forget them quickly.
-3. Deploy with `EDGE=cloudflare` and the tunnel tokens. The outage starts here.
+3. Deploy with `EDGE=cloudflare` and the tunnel token. The outage starts here.
 4. Right away, apply with `route_dns = true`. The wildcard and the dashboard now go through the
-   tunnels. Then redeploy each app that has a custom domain with **Take over existing DNS
+   tunnel. Then edit each app that has a custom domain and save it with **Take over existing DNS
    records** ticked (or point its record at the tunnel by hand). The outage ends as resolvers
    pick up the new records, usually within a few minutes.
 5. Close ports 80 and 443 with `edge = "cloudflare"` in `infra/hetzner`.
@@ -110,7 +112,7 @@ agent rewrites every app's Caddy site for the new mode when it starts.
 | `login_rate_limit`        | `10`                   | requests to `/login` per 10 s; `0` turns it off        |
 | `bot_fight_mode`          | `false`                | Bot Fight Mode (challenges probes and scripts too)     |
 | `block_ai_bots`           | `false`                | "Block AI bots"                                        |
-| `route_dns`               | `true`                 | point the records at the tunnels                       |
+| `route_dns`               | `true`                 | point the records at the tunnel                        |
 
 Limits of the free plan:
 
@@ -120,3 +122,12 @@ Limits of the free plan:
   `app.example.com` works, `app.apps.example.com` doesn't.
 
 CI checks this module with `tofu fmt -check` and `tofu validate`.
+
+### From two servers to one
+
+Until 0.4.0, Spotcraft ran on two servers with a tunnel each (`spotcraft-apps` and
+`spotcraft-ops`). The module now keeps only `spotcraft-apps`, under the same key, so its id
+and every custom-domain CNAME the agent made stay valid. Once the server runs the dashboard
+(deploy 0.4.0 first), `tofu plan` must show the dashboard record moving to that tunnel and the
+`spotcraft-ops` tunnel being destroyed, and **no replacement** of `spotcraft-apps`; then apply.
+Stop the old ops server's stack first so its tunnel has no connections left.

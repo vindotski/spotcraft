@@ -18,7 +18,7 @@
 
 {#if data.agentError}
   <Alert variant="destructive" class="mb-6">
-    <AlertTitle>Can't reach the apps server</AlertTitle>
+    <AlertTitle>Can't reach the agent</AlertTitle>
     <AlertDescription>{data.agentError}. Apps keep running; this page can't show or change them until the agent answers.</AlertDescription>
   </Alert>
 {:else if data.apps.length === 0}

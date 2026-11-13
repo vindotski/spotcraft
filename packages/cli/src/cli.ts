@@ -18,7 +18,7 @@ import {
 
 const HELP = `Usage: spotcraft dev <command> [--name <app>]
 
-Runs the same Postgres and app database setup as a Spotcraft apps server, on this machine.
+Runs the same Postgres and app database setup as a Spotcraft server, on this machine.
 
 Commands:
   start         start the local Postgres and set up this app's database

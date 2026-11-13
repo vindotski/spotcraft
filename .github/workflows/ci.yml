@@ -1,11 +1,12 @@
 name: CI
 
-# Pull requests: verify, and build both images (not pushed) so a broken Dockerfile shows
-# before merging. main and v* tags: verify, then publish both images to Docker Hub.
+# Pull requests: verify, and build the image (not pushed) so a broken Dockerfile shows before
+# merging. main and v* tags: verify, then publish the image to Docker Hub; v* tags also publish
+# the CLI. kit-v* tags: verify, then publish @spotcraft/kit alone (ADR 0027).
 on:
   push:
     branches: [main]
-    tags: ["v*.*.*"]
+    tags: ["v*.*.*", "kit-v*.*.*"]
   pull_request:
 
 permissions:
@@ -19,8 +20,8 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # The kit's database tests run against the same Postgres image as the apps server
-    # (infra/apps-server/compose.yaml); keep the two in step.
+    # The kit's database tests run against the same Postgres image as the server
+    # (infra/server/compose.yaml); keep the two in step.
     services:
       postgres:
         image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
@@ -45,16 +46,42 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # A Spotcraft release ships the kit inside the image (the agent migrates app databases with
+      # it) and pins it in the CLI, so that kit must be the published one: on npm, and its source
+      # unchanged since its kit-v<version> tag (ADR 0027). Read through the GitHub API with the
+      # job's read-only token, since the checkout keeps no git credentials. Forks don't
+      # publish the kit, so only the original repository checks.
+      - name: The kit in this release is published
+        if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          kit="$(jq -r .version packages/kit/package.json)"
+          if ! npm view "@spotcraft/kit@$kit" version > /dev/null 2>&1; then
+            echo "::error::@spotcraft/kit@$kit isn't on npm: release it first (tag kit-v$kit)"
+            exit 1
+          fi
+          # The git tree hash of packages/kit/src at each ref: equal means unchanged.
+          src() { gh api "repos/$REPO/contents/packages/kit?ref=$1" --jq '.[] | select(.name == "src") | .sha'; }
+          if ! tagged="$(src "kit-v$kit")" || [ -z "$tagged" ]; then
+            echo "::error::Can't read packages/kit/src at kit-v$kit: does the tag exist?"
+            exit 1
+          fi
+          if [ "$(src "$SHA")" != "$tagged" ]; then
+            echo "::error::packages/kit/src changed since kit-v$kit: release a new kit version first"
+            exit 1
+          fi
       - run: pnpm check
+      # Shell scripts that run in CI or on the server (shellcheck comes with the runner image).
+      - run: shellcheck infra/remote-deploy.sh scripts/npm-publish.sh
       - run: pnpm check:versions
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - name: Validate compose files
-        run: |
-          for s in apps-server ops-server; do
-            docker compose -f infra/$s/compose.yaml --env-file infra/$s/.env.example config --quiet
-          done
+      - name: Validate the compose file
+        run: docker compose -f infra/server/compose.yaml --env-file infra/server/.env.example config --quiet
       - name: Check the OpenTofu modules (format, validate)
         env:
           TOFU: ghcr.io/opentofu/opentofu:1.13.9@sha256:f5aef7f2632b490e3c289a239d7974497d0583f3df6bfa35e8eb31a367ee5ec0
@@ -64,25 +91,48 @@ jobs:
               -c 'tofu fmt -check -diff && tofu init -backend=false -input=false -lockfile=readonly >/dev/null && tofu validate'
           done
 
+  # The npm packages promise Node 24 (`engines`), while everything else runs on .nvmrc's Node:
+  # their tests run on 24 too.
+  node24:
+    name: kit and CLI on Node 24
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The kit's database tests, like verify's.
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+        env:
+          POSTGRES_PASSWORD: ci-only-superuser
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KIT_TEST_POSTGRES_URL: postgres://postgres:ci-only-superuser@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      # By folder: `spotcraft` is also the workspace root's name, and would run every package.
+      - run: pnpm install --frozen-lockfile --filter ./packages/kit... --filter ./packages/cli...
+      - run: pnpm --filter ./packages/kit --filter ./packages/cli test
+
   # Needs the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN to push.
   images:
-    name: Image (${{ matrix.image }})
+    name: Image
     needs: verify
+    # A kit release changes nothing in the image.
+    if: ${{ !startsWith(github.ref, 'refs/tags/kit-v') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: agent
-            dockerfile: agent/Dockerfile
-            description: Spotcraft agent, deploys apps on the apps server
-          - image: dashboard
-            dockerfile: apps/dashboard/Dockerfile
-            description: Spotcraft dashboard, manages and monitors the apps
-          - image: site
-            dockerfile: apps/site/Dockerfile
-            description: The Spotcraft website (spotcraft.dev), hosted on Spotcraft
     env:
       PUSH: ${{ github.event_name == 'push' }}
     steps:
@@ -117,7 +167,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ vars.DOCKERHUB_USERNAME || 'vindotski' }}/spotcraft-${{ matrix.image }}
+          images: ${{ vars.DOCKERHUB_USERNAME || 'vindotski' }}/spotcraft
           tags: |
             # main holds the production version; dev is the default branch, so not is_default_branch.
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
@@ -127,23 +177,23 @@ jobs:
             type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
             type=sha,format=short
           labels: |
-            org.opencontainers.image.title=spotcraft-${{ matrix.image }}
-            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.title=spotcraft
+            org.opencontainers.image.description=Spotcraft's agent and dashboard (one image, two containers)
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.source=https://github.com/vindotski/spotcraft
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: ${{ env.PUSH == 'true' && 'mode=max' || 'false' }}
           sbom: ${{ env.PUSH == 'true' }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          cache-from: type=gha,scope=spotcraft
+          cache-to: type=gha,scope=spotcraft,mode=max
 
       # Scan what was just built (amd64, from the same cache): fail on HIGH/CRITICAL issues
       # that have a fix, so an update is waiting. Unfixable base-image CVEs don't block.
@@ -151,28 +201,30 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           platforms: linux/amd64
           load: true
-          tags: scan/spotcraft-${{ matrix.image }}:ci
-          cache-from: type=gha,scope=${{ matrix.image }}
+          tags: scan/spotcraft:ci
+          cache-from: type=gha,scope=spotcraft
       - name: Scan for fixable vulnerabilities
         env:
           TRIVY: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
-          IMAGE: scan/spotcraft-${{ matrix.image }}:ci
+          IMAGE: scan/spotcraft:ci
         run: |
           docker save -o image.tar "$IMAGE"
           docker run --rm -v "$PWD/image.tar:/image.tar:ro" -v "$PWD/.trivyignore.yaml:/.trivyignore.yaml:ro" \
             "$TRIVY" image --quiet --input /image.tar --ignorefile /.trivyignore.yaml \
             --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 
-  # Release tags only: publishes @spotcraft/kit and the CLI (`spotcraft`) to npm (ADR 0019),
-  # after the same commit passed verify and built its images. Trusted publishing (GitHub
-  # OIDC): no token is stored and provenance is automatic. NPM_TOKEN (environment `npm`) is
-  # only for the very first publish, before a trusted publisher can be linked; delete it after.
+  # Release tags only: publishes the CLI (`spotcraft`) to npm (ADR 0019, ADR 0027), after the
+  # same commit passed verify (including the check that its kit is published) and built its
+  # image. Trusted publishing (GitHub OIDC): no token is stored and provenance is automatic.
+  # NPM_TOKEN (environment `npm`) is only for the very first publish of a package, before a
+  # trusted publisher can be linked; delete it after.
   npm:
-    name: npm packages
-    needs: [verify, images]
+    name: npm (spotcraft)
+    # node24: the CLI promises Node 24 (engines) and isn't published unless it works there.
+    needs: [verify, images, node24]
     # Only the original repository publishes these names; forks of the template skip it.
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'vindotski/spotcraft'
     runs-on: ubuntu-24.04
@@ -206,24 +258,53 @@ jobs:
             exit 1
           }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @spotcraft/kit --filter spotcraft build
-      # npm doesn't know pnpm's workspace: protocol; the CLI depends on the kit's exact version.
+      - run: pnpm --filter spotcraft build
+      # npm doesn't know pnpm's workspace: protocol; the CLI depends on the kit's exact version,
+      # which verify checked is on npm.
       - run: node scripts/pin-workspace-deps.ts packages/cli
-      - name: Publish (kit first, the CLI depends on it)
+      - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: ./scripts/npm-publish.sh packages/cli
+
+  # kit-v* tags only: publishes @spotcraft/kit alone, at its own version (ADR 0027).
+  kit:
+    name: npm (@spotcraft/kit)
+    # node24: the kit promises Node 24 (engines) and isn't published unless it works there.
+    needs: [verify, node24]
+    if: startsWith(github.ref, 'refs/tags/kit-v') && github.repository == 'vindotski/spotcraft'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+      - name: Check the tag and npm
+        env:
+          REF: ${{ github.ref }}
         run: |
-          version="$(jq -r .version package.json)"
-          tag=latest
-          case "$version" in *-*) tag=next ;; esac
-          # With a token, ask for provenance explicitly; with OIDC it's automatic.
-          extra=()
-          [ -n "$NODE_AUTH_TOKEN" ] && extra=(--provenance)
-          for dir in packages/kit packages/cli; do
-            name="$(jq -r .name "$dir/package.json")"
-            if npm view "$name@$version" version > /dev/null 2>&1; then
-              echo "$name@$version is already on npm; skipping"
-              continue
-            fi
-            (cd "$dir" && npm publish --access public --tag "$tag" "${extra[@]}")
-          done
+          tag="${REF#refs/tags/kit-v}"
+          version="$(jq -r .version packages/kit/package.json)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag kit-v$tag doesn't match packages/kit/package.json version $version"
+            exit 1
+          fi
+          npx --yes semver@7.7.3 -r '>=11.5.1' "$(npm --version)" > /dev/null || {
+            echo "::error::npm $(npm --version) is too old for trusted publishing"
+            exit 1
+          }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @spotcraft/kit build
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: ./scripts/npm-publish.sh packages/kit

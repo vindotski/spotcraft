@@ -10,6 +10,106 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-13
+
+Spotcraft runs on one server, from one image, and its website moved to GitHub Pages. Signing in
+through Cloudflare Access now opens the dashboard without its password, and the kit has its own
+version (0.3.1, released first). An audit before the release closed several security gaps.
+
+**Upgrading from 0.3** takes the steps under "Spotcraft runs on one server" below: new deploy
+variables (`SERVER_HOST`, `CLOUDFLARE_TUNNEL_TOKEN`), one Deploy run that switches to the new
+`spotcraft` image and the `infra/server` stack, then the OpenTofu changes and clean-up. Other
+breaking changes: the agent API takes `takeOver` in the body, and app names starting with `app-`
+are refused. Optionally, set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` for the Access sign-in.
+
+### Added
+
+- **The website moved to GitHub Pages** ([ADR 0024](docs/decisions/0024-website-on-pages.md)).
+  It's now plain Astro with no client-side JavaScript, deployed from `main` by the new Pages
+  workflow, with a build check for missing pages, broken links and anchors. The URLs are
+  unchanged.
+
+- **One sign-in behind Cloudflare Access** ([ADR 0023](docs/decisions/0023-access-sign-in.md)):
+  with the new `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` variables on the `production`
+  environment, the dashboard accepts Access's signed token and skips its password. Log out
+  also ends the Access sign-in. `infra/cloudflare` has a new `dashboard_settings` output with
+  the AUD. The password login stays for use without Access.
+
+- The dashboard shows the running Spotcraft version in its footer once you're signed in,
+  linked to the release notes.
+
+### Removed
+
+- **The `spotcraft-agent` and `spotcraft-dashboard` images**: one image, `spotcraft`, now runs
+  both as two containers ([ADR 0025](docs/decisions/0025-one-image.md)). **Breaking:** take the
+  new `infra/*/compose.yaml` files (the deploy copies them), which use `SPOTCRAFT_IMAGE`; a
+  fork publishes `<DOCKERHUB_USERNAME>/spotcraft`. Run the Deploy workflow with a tag of the
+  new image. The old images stay on Docker Hub but get no new versions.
+- The `spotcraft-site` image is no longer built or published; the site isn't an app on the
+  apps server any more.
+
+### Security
+
+- A crafted dashboard link with an encoded `?` or `#` in the app name (for example
+  `/apps/blog%3Fpurge=true`) could turn Remove into "remove and delete the database", or a user
+  delete into an app delete. App routes now only match valid names, and agent calls encode them.
+- App names starting with `app-` are refused: `app-<name>` is how Caddy reaches each app, so such
+  an app could receive another app's traffic.
+- A custom domain can't be one of the apps domain's own hosts (`fallback.`, `www.`…), whose
+  records OpenTofu manages.
+- Each app's `compose.yaml`, which carries its database password, is now mode 600, like
+  `secrets.json`. The agent tightens existing ones when it starts.
+- The dashboard's login lockout counts an IPv6 client by its /64 and no longer grows without
+  bound.
+- The agent and the kit pin `search_path` when they work in an app's database.
+
+### Changed
+
+- **Performance**: cAdvisor collects only containers' CPU and memory, every 30 seconds, with the
+  Compose project label (about a sixth of the series). An app's page no longer waits for the app
+  before starting its metric queries and logs, and streams its domain status (which asks
+  Cloudflare) instead of waiting for it; the edit page streams Docker Hub's tags. The image
+  build fetches dependencies from the lockfile in their own cached layer.
+- **`@spotcraft/kit` has its own version** ([ADR 0027](docs/decisions/0027-kit-version.md)) and
+  its own [changelog](packages/kit/CHANGELOG.md), released with `kit-vX.Y.Z` tags; it stays at
+  0.3.0 for now. Spotcraft releases (`vX.Y.Z`) publish the image and the CLI, which pins the
+  kit's exact version, and CI refuses one whose kit isn't on npm or changed since its tag.
+  Apps no longer get a new kit version with every Spotcraft release.
+- **Spotcraft runs on one server** ([ADR 0026](docs/decisions/0026-one-server.md)). The agent,
+  the dashboard, Postgres and the monitoring share one Compose stack in `infra/server`, which
+  replaces `infra/apps-server` and `infra/ops-server`. Docker networks replace the private
+  network: hosted apps reach only Caddy and Postgres, and only the dashboard reaches the agent.
+  Behind a Cloudflare Tunnel, Caddy trusts `CF-Connecting-IP` from cloudflared only and serves
+  the dashboard only to it. The agent also reserves `dashboard`, `cloudflared`,
+  `victoriametrics`, `vmagent` and `blackbox` as app names and refuses `DASHBOARD_DOMAIN` as an
+  app host.
+  `infra/hetzner` creates one server and no network; `infra/cloudflare` keeps one tunnel. Add an
+  external uptime check on the dashboard's URL, since the monitoring now shares the server.
+  **Breaking**, migration from two servers:
+  1. In the `production` environment, add the variable `SERVER_HOST` (the apps server's public
+     IP) and the secret `CLOUDFLARE_TUNNEL_TOKEN` (the value of `CLOUDFLARE_TUNNEL_TOKEN_APPS`).
+  2. Run Deploy with the new version. The apps server now runs everything. The old dashboard on
+     the ops server loses the agent here, so expect a few minutes without a dashboard; hosted
+     apps keep running.
+  3. Stop the ops server's stack (`docker compose down` in `/opt/spotcraft` there).
+  4. Behind Cloudflare: `tofu plan` in `infra/cloudflare` must show the dashboard record moving
+     to the `spotcraft-apps` tunnel, `spotcraft-ops` being destroyed, and **no replacement** of
+     `spotcraft-apps`. Then `tofu apply`. Without Cloudflare: point the dashboard's A and AAAA
+     records at the apps server.
+  5. `tofu plan` in `infra/hetzner` must show the ops server and the private network being
+     destroyed and no replacement of `spotcraft-apps`. The ops server has delete protection: set
+     `protect_servers = false` for that one apply, then back to `true`.
+  6. Remove `APPS_HOST`, `OPS_HOST`, `APPS_PRIVATE_IP`, `OPS_PRIVATE_IP`,
+     `CLOUDFLARE_TUNNEL_TOKEN_APPS` and `CLOUDFLARE_TUNNEL_TOKEN_OPS`, trim `KNOWN_HOSTS` to the
+     server's key, and remove the leftover `ufw allow from 10.0.0.0/16` rule on the server.
+     The metrics history from the ops server isn't carried over.
+- **Taking over a custom domain's DNS records is now an app setting**
+  ([ADR 0022](docs/decisions/0022-takeover-setting.md)). `takeOver` is stored in `app.json`,
+  returned by `GET /apps/:name` and sent in the `PUT` body. The dashboard's checkbox keeps its
+  value, and while it is on every deploy may replace records Spotcraft didn't make.
+  **Breaking (agent API):** the `?takeOver=true` query parameter is gone. Send
+  `"takeOver": true` in the body instead. Existing apps start with it off.
+
 ## [0.3.0] - 2026-11-13
 
 An address for every app, and Spotcraft behind Cloudflare if you want it
@@ -135,7 +235,8 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/vindotski/spotcraft/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vindotski/spotcraft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.1.0

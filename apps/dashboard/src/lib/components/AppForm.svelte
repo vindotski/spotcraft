@@ -118,7 +118,7 @@
         {:else if defaultHost}
           Always served at <span class="font-mono">{defaultHost}</span>. For your own domain, add a CNAME record pointing at it. A root domain also gets a www. redirect.
         {:else}
-          Point its DNS at the apps server. A root domain also gets a www. redirect.
+          Point its DNS at the server. A root domain also gets a www. redirect.
         {/if}
       </p>
     </div>
@@ -129,7 +129,7 @@
         <span class="text-sm">
           Take over existing DNS records
           <span class="block text-xs text-muted-foreground">
-            Replaces the domain's A, AAAA or CNAME records that Spotcraft didn't make, e.g. ones pointing at an old server. Mail and other records stay.
+            While checked, every deploy may replace the domain's A, AAAA or CNAME records that Spotcraft didn't make, e.g. ones pointing at an old server. Mail and other records stay.
           </span>
         </span>
       </label>
@@ -174,7 +174,7 @@
       <span class="text-sm">
         Database
         <span class="block text-xs text-muted-foreground">
-          Its own Postgres database on the apps server, given to the app as DATABASE_URL. Turning this off later keeps the data.
+          Its own Postgres database on the server, given to the app as DATABASE_URL. Turning this off later keeps the data.
         </span>
       </span>
     </label>

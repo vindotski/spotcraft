@@ -1,0 +1,53 @@
+---
+import { GITHUB, VERSION } from '../lib/site.ts'
+
+const columns = [
+  {
+    title: 'Docs',
+    links: [
+      { href: '/docs/getting-started', label: 'Getting started' },
+      { href: '/docs/security', label: 'Security model' },
+      { href: '/docs/decisions', label: 'Decisions' },
+    ],
+  },
+  {
+    title: 'Project',
+    links: [
+      { href: '/docs/changelog', label: 'Changelog' },
+      { href: GITHUB, label: 'GitHub' },
+      { href: `${GITHUB}/security/advisories/new`, label: 'Report a vulnerability' },
+    ],
+  },
+]
+---
+
+<footer class="mt-24 border-t">
+  <div class="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:grid-cols-[1fr_auto_auto] sm:gap-16">
+    <div class="space-y-2">
+      <p class="font-heading font-bold" translate="no">Spotcraft</p>
+      <p class="max-w-xs text-sm text-muted-foreground">
+        Your apps, your server. Apache-2.0 licensed, v{VERSION}.
+      </p>
+    </div>
+    {
+      columns.map((column) => (
+        <div class="space-y-3 text-sm">
+          <p class="font-medium">{column.title}</p>
+          <ul class="space-y-2">
+            {column.links.map((link) => (
+              <li>
+                <a
+                  href={link.href}
+                  class="text-muted-foreground hover:text-foreground"
+                  rel={link.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+</footer>

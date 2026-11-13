@@ -12,6 +12,7 @@
       "!!**/dist",
       "!!**/.svelte-kit",
       "!.claude/skills",
+      "!.claude/agents",
       "!skills-lock.json"
     ]
   },

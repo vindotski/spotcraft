@@ -1,7 +1,7 @@
 # @spotcraft/agent
 
-Fastify service on the **apps server** that deploys apps when the dashboard asks. It listens
-on the private network only, answers only the addresses in `AGENT_ALLOWED_IPS` (plus its own
+Fastify service on the Spotcraft server that deploys apps when the dashboard asks. It is
+reachable only on Docker networks (never on a host port), answers only the addresses in `AGENT_ALLOWED_IPS` (plus its own
 loopback, for the health check), and requires a bearer token on every route but `/health`.
 
 The files it writes are the only record of which apps exist:
@@ -22,7 +22,6 @@ The files it writes are the only record of which apps exist:
 | GET    | `/apps`                 | settings plus `state`, `health`, `status`, `hostnames`     |
 | GET    | `/apps/:name`           | one app, or 404                                            |
 | PUT    | `/apps/:name`           | create or update, then deploy; returns the app with status |
-|        |                         | `?takeOver=true` replaces a custom domain's DNS records    |
 | DELETE | `/apps/:name`           | stop and remove the app and its site; 204, or 404          |
 |        |                         | `?purge=true` also deletes its database and role           |
 | GET    | `/apps/:name/domain`    | custom domain status and records still to create           |
@@ -44,10 +43,17 @@ The files it writes are the only record of which apps exist:
 | `readOnly`  | `true`  | read-only root filesystem with a 64 MB writable `/tmp`    |
 | `database`  | `false` | its own Postgres database, given to it as `DATABASE_URL`  |
 | `protected` | `false` | behind Cloudflare Access (needs an Access policy)         |
+| `takeOver`  | `false` | deploys may replace a custom domain's foreign DNS records |
 
-App names: lower-case letters, digits and dashes, 2–32 characters; `caddy`, `agent`,
-`node-exporter`, `cadvisor`, `postgres`, `www` and `fallback` are reserved. A host can belong
-to one app only: a custom domain can't be another app's default host.
+`database`, `protected` and `takeOver` keep their current value when left out.
+
+App names: lower-case letters, digits and dashes, 2–32 characters. The names of the server's
+own services (`caddy`, `cloudflared`, `agent`, `dashboard`, `postgres`, `victoriametrics`,
+`vmagent`, `blackbox`, `node-exporter`, `cadvisor`), since an app's service joins the same
+network, plus `www` and `fallback`, are reserved, and so is every name starting with `app-`
+(Caddy reaches each app as `app-<name>`). A host can belong to one app only: a custom domain
+can't be another app's default host, and no app may use `DASHBOARD_DOMAIN` or a reserved host
+of the apps domain such as `fallback.<APPS_DOMAIN>` (409). The apex itself may be an app's.
 
 With `APPS_DOMAIN` set, every app is served at `<name>.<APPS_DOMAIN>` (its default host,
 first in `hostnames`) and, if it has one, at its custom domain too (ADR 0021).
@@ -65,9 +71,9 @@ With `EDGE=cloudflare`, `APPS_DOMAIN` and all four of `CLOUDFLARE_API_TOKEN`,
 agent logs a notice at startup. A root domain
 also gets `www.`.
 
-- **The domain's zone is in the account**: the agent creates a proxied CNAME to the apps tunnel,
+- **The domain's zone is in the account**: the agent creates a proxied CNAME to the server's tunnel,
   with the comment `spotcraft:<name>`. It refuses (409) if the host already has A, AAAA or CNAME
-  records it didn't make, unless the deploy says `?takeOver=true`. Other records such as MX and
+  records it didn't make, unless the app's `takeOver` setting is on (ADR 0022). Other records such as MX and
   TXT are never touched.
 - **Any other domain**: the agent creates a Cloudflare for SaaS custom hostname on the apps zone.
   Its owner adds a CNAME to `<name>.<APPS_DOMAIN>`, plus any TXT records `GET /apps/:name/domain`
@@ -104,6 +110,8 @@ Changes run one at a time.
 
 A `www.` site redirecting to the custom domain is added only for root domains (two labels,
 e.g. `tagtape.app`); subdomains get none, so Caddy never requests certificates for unused names.
+A root domain under a two-part suffix (`example.co.uk`) counts as a subdomain here and gets no
+`www.`; point `www.` at the app yourself if you need it.
 Caddy passes the visitor's address to the app as `X-Forwarded-For`. With `EDGE=cloudflare`,
 site blocks are plain HTTP (`http://host`): Cloudflare terminates TLS and a tunnel delivers
 requests to Caddy.
@@ -149,24 +157,27 @@ while the app is down.
 
 ## Settings
 
-| Env               | Default                  | Meaning                               |
-| ----------------- | ------------------------ | ------------------------------------- |
-| `AGENT_TOKEN`     | —                        | required, at least 32 characters      |
-| `HOST`            | `127.0.0.1`              | bind address                          |
-| `PORT`            | `4000`                   | listen port                           |
-| `DATA_DIR`        | `/opt/spotcraft`         | holds `apps/` and `sites/`            |
-| `CADDY_CONTAINER` | `spotcraft-apps-caddy-1` | container reloaded after site changes |
-| `POSTGRES_URL`    | —                        | the agent's Postgres role (optional)  |
-| `APPS_DOMAIN`     | —                        | apps get `<name>.<APPS_DOMAIN>`       |
-| `EDGE`            | `direct`                 | `cloudflare`: sites are plain HTTP    |
-| `CLOUDFLARE_*`    | —                        | custom domains, Access (see below)    |
-| `LOG_LEVEL`       | `info`                   | log level                             |
+| Env                | Default                  | Meaning                                 |
+| ------------------ | ------------------------ | --------------------------------------- |
+| `AGENT_TOKEN`      | —                        | required, at least 32 characters        |
+| `HOST`             | `127.0.0.1`              | bind address                            |
+| `PORT`             | `4000`                   | listen port                             |
+| `DATA_DIR`         | `/opt/spotcraft`         | holds `apps/` and `sites/`              |
+| `CADDY_CONTAINER`  | `spotcraft-apps-caddy-1` | container reloaded after site changes   |
+| `POSTGRES_URL`     | —                        | the agent's Postgres role (optional)    |
+| `APPS_DOMAIN`      | —                        | apps get `<name>.<APPS_DOMAIN>`         |
+| `DASHBOARD_DOMAIN` | —                        | the dashboard's host; apps can't use it |
+| `EDGE`             | `direct`                 | `cloudflare`: sites are plain HTTP      |
+| `CLOUDFLARE_*`     | —                        | custom domains, Access (see below)      |
+| `LOG_LEVEL`        | `info`                   | log level                               |
 
-The image is distroless Node 26 (no shell or package manager) plus the static Docker CLI and
-Compose plugin. It runs as uid 1000 and reaches Docker through the socket's group (`group_add`
+The agent runs from the `spotcraft` image (the root `Dockerfile`, shared with the dashboard;
+Compose starts it with `working_dir: /app/agent` and `command: ["src/index.ts"]`): distroless
+Node 26 (no shell or package manager) plus the static Docker CLI and Compose plugin. It runs as uid 1000 and reaches Docker through the socket's group (`group_add`
 with `DOCKER_GID`); the Docker CLI keeps its config in `/tmp` so the root filesystem can be
 read-only. Mounting the Docker socket still makes the agent
-equivalent to root on the server; the private-network binding and the token protect it.
+equivalent to root on the server; the internal `control` network (only the dashboard is there),
+`AGENT_ALLOWED_IPS` and the token protect it.
 
 The workspace runs the kit's TypeScript source (the `spotcraft-source` export condition, set in the
 `dev` and `test` scripts and in `tsconfig.json`). The image ships the kit's built JavaScript,
@@ -175,5 +186,5 @@ because Node won't run TypeScript from `node_modules`.
 ```sh
 pnpm --filter @spotcraft/agent test        # node:test; the database test needs KIT_TEST_POSTGRES_URL
 pnpm --filter @spotcraft/agent typecheck
-docker build -f agent/Dockerfile .         # from the repository root
+docker build .                             # the spotcraft image, from the repository root
 ```

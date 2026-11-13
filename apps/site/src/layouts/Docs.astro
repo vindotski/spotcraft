@@ -1,0 +1,42 @@
+---
+import { NAV } from '../lib/docs.ts'
+import { pagePath } from '../lib/path.ts'
+import { VERSION } from '../lib/site.ts'
+import Base from './Base.astro'
+
+interface Props {
+  title: string
+  description?: string
+}
+
+const path = pagePath(Astro.url)
+const active = (slug: string) => path === `/docs/${slug}` || path.startsWith(`/docs/${slug}/`)
+---
+
+<Base {...Astro.props}>
+  <div class="mx-auto grid max-w-6xl gap-10 px-4 py-10 lg:grid-cols-[13rem_1fr] lg:py-14">
+    <aside class="lg:sticky lg:top-24 lg:self-start">
+      <p class="font-mono text-xs text-muted-foreground">Docs for v{VERSION}</p>
+      <nav aria-label="Docs" class="mt-3">
+        <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm lg:flex-col lg:gap-2">
+          {
+            NAV.map((item) => (
+              <li>
+                <a
+                  href={`/docs/${item.slug}`}
+                  class={active(item.slug) ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}
+                  aria-current={active(item.slug) ? 'page' : undefined}
+                >
+                  {item.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </aside>
+    <div class="min-w-0">
+      <slot />
+    </div>
+  </div>
+</Base>

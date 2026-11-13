@@ -1,6 +1,6 @@
 ---
 name: terraform-style-guide
-description: Generate Terraform HCL code following HashiCorp's official style conventions and best practices. Use when writing, reviewing, or generating Terraform configurations.
+description: Generate Terraform/OpenTofu HCL code following HashiCorp's official style conventions and best practices. Use when writing, reviewing, or generating Terraform or OpenTofu configurations (`*.tf`, e.g. infra/hetzner and infra/cloudflare).
 metadata:
   lifecycle-status: active
 ---
@@ -10,6 +10,8 @@ metadata:
 Generate and maintain Terraform code following HashiCorp's official style conventions and best practices.
 
 **Reference:** [HashiCorp Terraform Style Guide](https://developer.hashicorp.com/terraform/language/style)
+
+> **Spotcraft:** the modules in `infra/` run on **OpenTofu**, not Terraform. The style rules are the same; run `tofu fmt` and `tofu validate` (never `terraform`), and pin providers in `terraform.tf` as the existing modules do.
 
 ## Code Generation Strategy
 

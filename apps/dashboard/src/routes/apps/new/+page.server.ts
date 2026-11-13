@@ -26,7 +26,7 @@ export const actions: Actions = {
         output: null,
       })
     }
-    const result = await deployApp(values.name, input, { takeOver: values.takeOver })
+    const result = await deployApp(values.name, input)
     if (!result.ok)
       return fail(502, { values, errors, deployError: result.error, output: result.output ?? null })
     await writeProbes(await listApps()).catch(() => {})

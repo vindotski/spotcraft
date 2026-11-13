@@ -15,7 +15,7 @@ function decodeCursor(cursor: string): [string, string] {
 }
 
 /**
- * App databases on the apps server's Postgres, managed as the agent's role (`adminUrl`, e.g.
+ * App databases on the server's Postgres, managed as the agent's role (`adminUrl`, e.g.
  * `postgres://spotcraft_agent:…@postgres:5432/postgres`). Apps reach the same server by the
  * same host name, on the network they share with it.
  */
@@ -33,7 +33,13 @@ export function postgresDatabases(adminUrl: string): Databases {
 
   /** Runs `fn` connected to the app's database as the agent, which owns `auth`. */
   async function inAppDatabase<T>(name: string, fn: (client: pg.Client) => Promise<T>) {
-    const client = new pg.Client({ connectionString: appUrl(name) })
+    // The app owns its database and could create schemas; every query here is qualified, and a
+    // fixed search_path keeps anything the app made from shadowing what they resolve to. Set as a
+    // startup option, so there is no extra query that could fail after connecting.
+    const client = new pg.Client({
+      connectionString: appUrl(name),
+      options: '-c search_path=pg_catalog,auth',
+    })
     await client.connect()
     try {
       return await fn(client)

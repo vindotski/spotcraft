@@ -2,7 +2,7 @@
 
 The backend kit, `@spotcraft/kit`, gives a server-rendered app **guest accounts**. A visitor
 gets an account the first time they save something, without signing up, and the app keeps their
-data under its id. The data lives in the app's own Postgres database on the apps server. Locally, the
+data under its id. The data lives in the app's own Postgres database on the server. Locally, the
 `spotcraft dev` command runs the same setup. Why it works this way is in
 [ADR 0016](../decisions/0016-backend-kit.md) and [ADR 0017](../decisions/0017-local-stack.md).
 

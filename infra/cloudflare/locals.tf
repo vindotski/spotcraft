@@ -19,10 +19,11 @@ locals {
     "${pair[0]}/${pair[1]}" => { zone = pair[0], setting = pair[1] }
   }
 
-  # Each server's cloudflared sends every request to its own Caddy, which routes by host.
+  # One tunnel to the server's Caddy, which routes by host (ADR 0026). Keyed "apps", as when
+  # there were two servers, so the tunnel keeps its id: every custom-domain CNAME the agent
+  # made points at it.
   tunnels = {
     apps = "spotcraft-apps"
-    ops  = "spotcraft-ops"
   }
 
   access = length(var.access_emails) > 0

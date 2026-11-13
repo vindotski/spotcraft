@@ -1,0 +1,31 @@
+# vmagent scrape config: the exporters and blackbox on the server's `web` network.
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+  # Uptime probes of each hosted app's public URLs. The dashboard writes the targets
+  # (labelled app=<name>) whenever the app list changes; a protected app's targets also
+  # carry module=http_access (blackbox.yml).
+  - job_name: probes
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    file_sd_configs:
+      - files: [/probes/probes.json]
+    relabel_configs:
+      - source_labels: [module]
+        regex: (.+)
+        target_label: __param_module
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

@@ -1,0 +1,375 @@
+# The Spotcraft server (ADR 0026): Caddy in front, one container per hosted app, the agent,
+# the dashboard, Postgres and the monitoring. Lives in /opt/spotcraft on the server.
+# Only Caddy is published; everything else is reachable on Docker networks only.
+# Third-party images are pinned by digest; bump the version and digest together.
+#
+# Networks: hosted apps share `edge` with Caddy and Postgres, and nothing else. The dashboard
+# and the monitoring are on `web` (with Caddy); only the dashboard and the agent are on
+# `control`; only the agent and Postgres are on `db`.
+#
+# The project keeps the name it had on the two-server setup, so the existing volumes
+# (certificates, Postgres data) and container names carry over unchanged.
+name: spotcraft-apps
+
+# Every service: no Linux capabilities unless it adds one, no privilege escalation.
+x-hardened: &hardened
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+
+services:
+  caddy:
+    <<: *hardened
+    image: caddy:2.11.9@sha256:e40b94d0a43b5ff69cb20568d73f10c70703df7b0ffc2298eb3d723cdc9d0bd1
+    cap_add: [NET_BIND_SERVICE] # ports 80 and 443
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    mem_limit: 512m
+    # 127.0.0.1 behind a Cloudflare Tunnel (PUBLIC_BIND), so nothing outside reaches Caddy.
+    ports:
+      - "${PUBLIC_BIND:-0.0.0.0}:80:80"
+      - "${PUBLIC_BIND:-0.0.0.0}:443:443"
+      - "${PUBLIC_BIND:-0.0.0.0}:443:443/udp" # HTTP/3
+    environment:
+      # Behind Cloudflare, cloudflared's fixed address (below): the only peer whose
+      # CF-Connecting-IP is believed. Hosted apps also reach Caddy, on `edge`, and must not.
+      CADDY_TRUSTED_PROXIES: ${CADDY_TRUSTED_PROXIES:-127.0.0.1/32}
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?set DASHBOARD_DOMAIN in .env}
+      # Who may reach the dashboard's site: anyone in direct mode; only cloudflared behind a
+      # tunnel, so nothing (hosted apps included) gets past Cloudflare Access and the WAF.
+      DASHBOARD_PEERS: ${DASHBOARD_PEERS:-0.0.0.0/0 ::/0}
+      # http:// behind a Cloudflare Tunnel: Cloudflare holds the certificate.
+      DASHBOARD_SCHEME: ${DASHBOARD_SCHEME:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro # one file per app, written by the agent
+      - caddy_data:/data # certificates: keep across redeploys
+      - caddy_config:/config
+    # `edge` carries the published ports (IPv6 on, so IPv6 visitors keep their real addresses);
+    # `web` reaches the dashboard and is where cloudflared comes from.
+    networks:
+      edge:
+        gw_priority: 1
+      web: {}
+    # The admin API only answers once the config has loaded.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Only with COMPOSE_PROFILES=cloudflare (EDGE=cloudflare): dials out to this server's
+  # Cloudflare Tunnel and hands every request to Caddy on port 80 (ADR 0021).
+  cloudflared:
+    <<: *hardened
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
+    profiles: [cloudflare]
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:2000", "run"]
+    read_only: true
+    mem_limit: 128m
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-} # required with the profile; the deploy checks it
+    # A fixed address: Caddy trusts CF-Connecting-IP from it, and from nothing else.
+    networks:
+      web:
+        ipv4_address: 10.255.254.2
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  agent:
+    <<: *hardened
+    # The one Spotcraft image, running the agent (ADR 0025).
+    image: ${SPOTCRAFT_IMAGE:-vindotski/spotcraft}:${SPOTCRAFT_TAG:-latest}
+    working_dir: /app/agent
+    command: ["src/index.ts"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    mem_limit: 256m
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4000
+      # The Docker CLI keeps its config under HOME; /tmp is the only writable place.
+      HOME: /tmp
+      DOCKER_CONFIG: /tmp/.docker
+      AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
+      # Only the dashboard may call the agent: its fixed address on the internal `control`
+      # network (Fastify has no trustProxy, so this is the real peer address).
+      AGENT_ALLOWED_IPS: 10.255.255.2
+      DATA_DIR: /opt/spotcraft
+      CADDY_CONTAINER: spotcraft-apps-caddy-1
+      # Every app is also served at <name>.<APPS_DOMAIN> (ADR 0021); empty turns that off.
+      APPS_DOMAIN: ${APPS_DOMAIN:-}
+      # Served by the same Caddy: no app may take this host (ADR 0026).
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN}
+      # cloudflare: site blocks are plain HTTP, the tunnel brings requests to Caddy (ADR 0021).
+      EDGE: ${EDGE:-direct}
+      # Optional, all four together: custom domains' DNS through the Cloudflare API.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+      CLOUDFLARE_APPS_ZONE_ID: ${CLOUDFLARE_APPS_ZONE_ID:-}
+      CLOUDFLARE_TUNNEL_ID: ${CLOUDFLARE_TUNNEL_ID:-}
+      # Optional: lets apps be put behind Cloudflare Access with the owners' policy.
+      CLOUDFLARE_ACCESS_POLICY_ID: ${CLOUDFLARE_ACCESS_POLICY_ID:-}
+      # Its own Postgres role, to create a database and role per app (ADR 0015).
+      POSTGRES_URL: postgres://spotcraft_agent:${POSTGRES_AGENT_PASSWORD:?set POSTGRES_AGENT_PASSWORD in .env}@postgres:5432/postgres
+    # Reaches Docker through the socket's group instead of running as root.
+    group_add: ["${DOCKER_GID:?set DOCKER_GID in .env (getent group docker)}"]
+    # `control`: the dashboard calls it; `db`: Postgres; `default`: outbound (Cloudflare API).
+    # Never on `edge`, which hosted apps share, nor published on a host port.
+    networks: [default, control, db]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same paths as on the host; owned by uid 1000, the agent's user.
+      - ./apps:/opt/spotcraft/apps # app.json + compose.yaml per app
+      - ./sites:/opt/spotcraft/sites # Caddy site block per app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/nodejs/bin/node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # One Postgres for every hosted app that asks for a database (ADR 0015): each app gets its
+  # own role and database, created by the agent as `spotcraft_agent` (set up by the deploy
+  # script). The superuser `postgres` only works over the local socket inside this container.
+  postgres:
+    <<: *hardened
+    image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+    # The image's own user, so the entrypoint needs no root, chown or gosu.
+    user: "999:999"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+      - /var/run/postgresql:size=1m,noexec,nosuid,nodev,uid=999,gid=999
+    mem_limit: 1g
+    shm_size: 256m # parallel queries use shared memory; Docker's default is 64 MB
+    stop_grace_period: 60s
+    environment:
+      # Only used once, when the data directory is created; generated by the deploy script.
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set POSTGRES_SUPERUSER_PASSWORD in .env}
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - password_encryption=scram-sha-256
+      # Sized for a small server shared with the apps (about 1 GB for Postgres).
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=100
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - postgres_data:/var/lib/postgresql # Postgres 18 keeps PGDATA in a versioned subfolder
+    # Apps reach it as `postgres` on the edge network; the agent on the internal `db`
+    # network, so it never has to join the network hosted apps share.
+    networks: [edge, db]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-h", "/var/run/postgresql", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  node-exporter:
+    <<: *hardened
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+    read_only: true
+    mem_limit: 128m
+    command: ["--path.rootfs=/host"]
+    pid: host
+    networks: [web] # scraped by vmagent
+    volumes:
+      - /:/host:ro,rslave
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # cAdvisor reads every container's cgroups and the Docker/containerd state, read-only.
+  cadvisor:
+    <<: *hardened
+    image: ghcr.io/google/cadvisor:v0.60.6@sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
+    read_only: true
+    mem_limit: 256m
+    # Only what the dashboard reads (each container's CPU and memory, found by its Compose
+    # project), every 30 s like the scrape: the defaults scan every cgroup each second and
+    # export every metric family and label, costly on a small server and in VictoriaMetrics.
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --enable_metrics=cpu,memory
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project
+    devices:
+      - /dev/kmsg
+    networks: [web] # scraped by vmagent
+    volumes:
+      - /:/rootfs:ro
+      # Only the Docker socket (not all of /var/run): cAdvisor reads container names and labels.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker 29 keeps images in containerd, which cAdvisor needs to read container details.
+      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
+      - /var/lib/containerd:/var/lib/containerd:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+
+  # --- Dashboard and monitoring (ADR 0026) -------------------------------------------------
+  dashboard:
+    <<: *hardened
+    # The one Spotcraft image, running the dashboard (ADR 0025). It never gets the Docker socket.
+    image: ${SPOTCRAFT_IMAGE:-vindotski/spotcraft}:${SPOTCRAFT_TAG:-latest}
+    working_dir: /app/dashboard
+    command: ["build"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    mem_limit: 512m
+    environment:
+      PORT: 3000
+      # Behind Caddy: the visitor's scheme and address (the login lockout keys on it).
+      PROTOCOL_HEADER: x-forwarded-proto
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: 1
+      PROBES_FILE: /probes/probes.json
+      AGENT_URL: http://agent:4000
+      AGENT_TOKEN: ${AGENT_TOKEN:?set AGENT_TOKEN in .env}
+      DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
+      # Optional, both together: a Cloudflare Access sign-in skips the password (ADR 0023).
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+    volumes:
+      - probes:/probes # uptime-probe targets the dashboard writes for vmagent
+    # `web`: Caddy in front, plus outbound (Access keys, Docker Hub tags). `control`: the agent,
+    # which only answers this address.
+    networks:
+      web: {}
+      control:
+        ipv4_address: 10.255.255.2
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/nodejs/bin/node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  victoriametrics:
+    <<: *hardened
+    image: victoriametrics/victoria-metrics:v1.156.0@sha256:da8a90ac0912f16589be2b96a6441a2fca4bca415c83783d972d92e3b5b66970
+    read_only: true
+    # VictoriaMetrics sizes its caches from this limit (60% by default).
+    mem_limit: 1g
+    command: ["-storageDataPath=/storage", "-retentionPeriod=90d"]
+    networks: [web]
+    volumes:
+      - vm_data:/storage
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8428/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  vmagent:
+    <<: *hardened
+    image: victoriametrics/vmagent:v1.156.0@sha256:d3229ab469c54ae5266e86246932266bad29b06668b5371acbd6d3de1b3035e7
+    read_only: true
+    # Buffers samples here while VictoriaMetrics is unreachable.
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+    mem_limit: 256m
+    command:
+      - -promscrape.config=/etc/vmagent/scrape.yaml
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+      - -remoteWrite.tmpDataPath=/tmp/vmagent
+    networks: [web]
+    volumes:
+      - ./scrape.yaml:/etc/vmagent/scrape.yaml:ro
+      - probes:/probes:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8429/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  blackbox:
+    <<: *hardened
+    image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
+    user: "65534:65534" # nobody; it only makes outgoing requests
+    read_only: true
+    mem_limit: 128m
+    networks: [web]
+    volumes:
+      - ./blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9115/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# Hosted apps join this network so Caddy can reach them by service name. IPv6 on, so that
+# Docker forwards IPv6 visitors with kernel NAT and Caddy sees their real addresses (on an
+# IPv4-only network a user-space proxy answers them and they all look like one address).
+networks:
+  edge:
+    name: spotcraft-edge
+    enable_ipv6: true
+  # Caddy, cloudflared, the dashboard and the monitoring. IPv4 only, with a fixed subnet outside
+  # Docker's default pools, so cloudflared has a known address (visitors' IPv6 addresses arrive
+  # through `edge`, which carries Caddy's published ports). Other services get addresses from
+  # `ip_range` only, so none can take cloudflared's before it starts.
+  web:
+    ipam:
+      config:
+        - subnet: 10.255.254.0/27
+          ip_range: 10.255.254.16/28
+  # The dashboard and the agent only, no route out. A fixed subnet outside Docker's default
+  # pools, so the agent can allow exactly the dashboard's address; the agent's own address comes
+  # from `ip_range`, so it can never take the dashboard's.
+  control:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.255.255.0/29
+          ip_range: 10.255.255.4/30
+  # Postgres and the agent only; no route out.
+  db:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
+  vm_data: # metrics (90 days)
+  probes: # uptime-probe targets, written by the dashboard, read by vmagent

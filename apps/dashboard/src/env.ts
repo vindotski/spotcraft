@@ -16,7 +16,7 @@ const required =
 
 export const variables = defineEnvVars({
   AGENT_URL: {
-    description: 'Agent on the apps server, e.g. http://10.0.0.2:4000',
+    description: 'The agent, e.g. http://agent:4000',
     schema: required('AGENT_URL'),
   },
   AGENT_TOKEN: {
@@ -40,6 +40,16 @@ export const variables = defineEnvVars({
   VICTORIAMETRICS_URL: {
     description: 'VictoriaMetrics query API',
     schema: (value) => value || 'http://victoriametrics:8428',
+  },
+  CF_ACCESS_TEAM_DOMAIN: {
+    description:
+      'Cloudflare Access team domain (<team>.cloudflareaccess.com); with CF_ACCESS_AUD, an Access sign-in skips the password',
+    schema: (value) => value ?? '',
+  },
+  CF_ACCESS_AUD: {
+    description:
+      "The dashboard's Access application AUD tag; set together with CF_ACCESS_TEAM_DOMAIN",
+    schema: (value) => value ?? '',
   },
   PROBES_FILE: {
     description: 'File vmagent reads uptime-probe targets from; empty to skip',

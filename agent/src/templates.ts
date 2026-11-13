@@ -1,7 +1,4 @@
-import { type AgentSettings, type AppSpec, hostnames } from './app-spec.ts'
-
-/** Project name for an app's compose stack (also its container name prefix). */
-export const projectName = (name: string) => `spotcraft-app-${name}`
+import { type AgentSettings, type AppSpec, hostnames, projectName } from './app-spec.ts'
 
 /** Caddy reaches each app by this alias on the shared edge network. */
 export const upstreamAlias = (name: string) => `app-${name}`
@@ -51,7 +48,7 @@ export function renderCompose(app: AppSpec, databaseUrl?: string): string {
 export const wantsWwwRedirect = (domain: string) => domain.split('.').length === 2
 
 /**
- * The app's Caddy site block, imported by the apps server's main Caddyfile. It answers on the
+ * The app's Caddy site block, imported by the server's main Caddyfile. It answers on the
  * app's default host and its custom domain. Behind Cloudflare (`edge: cloudflare`) the sites are
  * plain HTTP: Cloudflare terminates TLS and the tunnel brings requests to Caddy on port 80.
  */

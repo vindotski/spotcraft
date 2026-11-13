@@ -5,7 +5,7 @@ status: accepted
 implementation: done
 date: 2026-11-08
 supersedes: [13]
-superseded_by: []
+superseded_by: [27]
 notes: "Restates ADR 0013 with the npm packages added: their names, their APIs as public API, and how they are published."
 ---
 

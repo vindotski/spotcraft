@@ -1,13 +1,8 @@
 locals {
-  # 10.0.0.1 is Hetzner's gateway; the servers take the next two addresses.
-  private_ips = {
-    apps = "10.0.0.2"
-    ops  = "10.0.0.3"
-  }
-
+  # One server (ADR 0026). Keyed "apps", as when there were two, so the existing server keeps
+  # its address in the state and is never replaced.
   servers = {
     apps = var.apps_server_type
-    ops  = var.ops_server_type
   }
 
   # Caddy's public ports; closed when Cloudflare Tunnels deliver the traffic.

@@ -1,11 +1,11 @@
 ---
 title: Apps and ops on two servers
 number: 1
-status: accepted
+status: superseded
 implementation: skeleton
 date: 2026-11-07
 supersedes: []
-superseded_by: []
+superseded_by: [26]
 notes: ""
 ---
 

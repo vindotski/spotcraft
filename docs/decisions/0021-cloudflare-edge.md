@@ -5,7 +5,7 @@ status: accepted
 implementation: done
 date: 2026-11-13
 supersedes: []
-superseded_by: []
+superseded_by: [22, 23]
 notes: "Built: default subdomains, client-address handling, the infra/cloudflare module, the Hetzner edge switch, tunnel mode on both servers, custom domains through the API and per-app Access. Protected apps are probed only up to the Access sign-in."
 ---
 

@@ -7,13 +7,14 @@ import {
   type DomainStatus,
   defaultHost,
   hostnames,
+  projectName,
   servedHosts,
 } from './app-spec.ts'
 import { CloudflareError } from './cloudflare.ts'
 import { DomainConflict, type Domains } from './domains.ts'
 import type { Runner, RunResult } from './runner.ts'
 import type { AppFiles, Store } from './store.ts'
-import { projectName, renderCompose, renderSite } from './templates.ts'
+import { renderCompose, renderSite } from './templates.ts'
 
 export class AgentError extends Error {
   readonly statusCode: number
@@ -61,7 +62,7 @@ function withStatus(
 }
 
 /**
- * App databases on the apps server's Postgres (ADR 0015). Kept behind this interface so
+ * App databases on the server's Postgres (ADR 0015). Kept behind this interface so
  * this module (which the dashboard imports for its types) doesn't load the database code.
  */
 export interface Databases {
@@ -217,9 +218,9 @@ export class Apps {
 
   /**
    * Writes the app's files and rolls it out; on failure, puts the previous version back.
-   * With `takeOver`, a custom domain's existing DNS records are replaced (ADR 0021).
+   * With `spec.takeOver`, a custom domain's existing DNS records are replaced (ADR 0022).
    */
-  deploy(spec: AppSpec, { takeOver = false } = {}): Promise<AppStatus> {
+  deploy(spec: AppSpec): Promise<AppStatus> {
     return this.#exclusive(async () => {
       const previousSpec = await this.#store.get(spec.name)
       const oldHosts = previousSpec ? customHosts(previousSpec) : []
@@ -228,7 +229,7 @@ export class Apps {
       const domains = this.#domains
       const undoDns = domains
         ? await this.#cloudflare(`set up DNS for ${spec.domain}`, () =>
-            domains.attach(spec.name, newHosts, { takeOver }),
+            domains.attach(spec.name, newHosts, { takeOver: Boolean(spec.takeOver) }),
           )
         : undefined
       const access = this.#access
@@ -324,7 +325,7 @@ export class Apps {
         records: [
           target && edge === 'cloudflare'
             ? { type: 'CNAME', name: host, value: target }
-            : { type: 'A/AAAA', name: host, value: 'the apps server' },
+            : { type: 'A/AAAA', name: host, value: 'the server' },
         ],
       })),
     }
@@ -340,6 +341,8 @@ export class Apps {
     return this.#exclusive(async () => {
       const pending: { spec: AppSpec; files: AppFiles; site: string }[] = []
       for (const spec of await this.#store.list()) {
+        // Compose files carry DATABASE_URL; older ones were written readable by everyone.
+        await this.#store.lockDownCompose(spec.name)
         const files = await this.#store.read(spec.name)
         const site = renderSite(spec, this.settings)
         if (files && files.site !== site) pending.push({ spec, files, site })

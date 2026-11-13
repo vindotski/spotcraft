@@ -15,11 +15,22 @@ export interface AppSpec {
   cpus: number
   /** Read-only root filesystem (with a small writable /tmp). */
   readOnly: boolean
-  /** Its own Postgres role and database on the apps server, given to it as DATABASE_URL. */
+  /** Its own Postgres role and database on the server, given to it as DATABASE_URL. */
   database: boolean
   /** Behind Cloudflare Access: visitors sign in as one of the owners first (ADR 0021). */
   protected?: boolean
+  /**
+   * Every deploy may replace the custom domain's A, AAAA and CNAME records that Spotcraft
+   * didn't make, e.g. ones pointing at an old server (ADR 0022).
+   */
+  takeOver?: boolean
 }
+
+/**
+ * The Compose project of an app (also its container name prefix). The dashboard finds an app's
+ * cAdvisor metrics by this label value.
+ */
+export const projectName = (name: string) => `spotcraft-app-${name}`
 
 // Names end up in container names, network aliases and file paths.
 export const NAME = '^[a-z][a-z0-9-]{0,30}[a-z0-9]$'
@@ -32,18 +43,31 @@ export const ENV_KEY = '^[A-Za-z_][A-Za-z0-9_]*$'
 export const MEMORY = '^[1-9][0-9]{0,5}[mg]$'
 
 /**
- * Names an app can't take: the apps server's own services use them, or (as `<name>.<APPS_DOMAIN>`)
- * they would clash with hosts the apps domain keeps for itself (ADR 0021).
+ * Names an app can't take. An app's Compose service is named after it and joins the edge network
+ * that Caddy and Postgres share, so it must not shadow any of the server's own services (Caddy
+ * resolves `dashboard`, Postgres is `postgres`), nor, as `<name>.<APPS_DOMAIN>`, a host the apps
+ * domain keeps for itself (ADR 0021, ADR 0026).
  */
 export const RESERVED_NAMES = new Set([
   'caddy',
+  'cloudflared',
   'agent',
+  'dashboard',
+  'postgres',
+  'victoriametrics',
+  'vmagent',
+  'blackbox',
   'node-exporter',
   'cadvisor',
-  'postgres',
   'www',
   'fallback',
 ])
+
+/**
+ * Whether an app may not take this name: one of RESERVED_NAMES, or `app-…`, the alias Caddy uses
+ * to reach each app on the edge network (an app called `app-blog` would answer for `blog`).
+ */
+export const isReservedName = (name: string) => RESERVED_NAMES.has(name) || name.startsWith('app-')
 
 /** The host every app gets on the apps domain, e.g. `tagtape.spotcraft.dev`. */
 export const defaultHost = (name: string, appsDomain: string) => `${name}.${appsDomain}`
@@ -78,13 +102,15 @@ export const appBodySchema = {
     database: { type: 'boolean' },
     // Like `database`: left out, an update keeps the current setting.
     protected: { type: 'boolean' },
+    // Like `database`: left out, an update keeps the current setting.
+    takeOver: { type: 'boolean' },
   },
 } as const
 
-/** The PUT body: everything but the name, and `database` may be left out. */
+/** The PUT body: everything but the name; `database`, `protected` and `takeOver` may be left out. */
 export type AppBody = Omit<AppSpec, 'name' | 'database'> & { database?: boolean }
 
-/** How traffic reaches the apps server (ADR 0021). */
+/** How traffic reaches the server (ADR 0021). */
 export type Edge = 'direct' | 'cloudflare'
 
 /** What the agent serves apps under; the dashboard reads it from `GET /settings`. */
@@ -97,6 +123,8 @@ export interface AgentSettings {
   dns?: boolean
   /** Apps can be put behind Cloudflare Access. */
   access?: boolean
+  /** The dashboard's host, served by the same Caddy; no app may use it (ADR 0026). */
+  dashboardDomain?: string
 }
 
 /** The custom-domain hosts the agent sets up: the domain, and `www.` for a root domain. */

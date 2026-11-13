@@ -1,6 +1,7 @@
 <script lang="ts">
   import './layout.css'
   import favicon from '#lib/assets/favicon.svg'
+  import { RELEASE_URL, VERSION } from '#lib/version.ts'
   import { page } from '$app/state'
   import type { LayoutProps } from './$types'
 
@@ -27,7 +28,10 @@
           <a href={item.href} class={isActive(item.href) ? 'font-medium' : 'text-muted-foreground hover:text-foreground'} aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
         {/each}
       </nav>
-      <form method="POST" action="/logout" class="ml-auto">
+      {#if data.accessEmail}
+        <span class="ml-auto truncate text-sm text-muted-foreground">{data.accessEmail}</span>
+      {/if}
+      <form method="POST" action="/logout" class={data.accessEmail ? '' : 'ml-auto'}>
         <button type="submit" class="text-sm text-muted-foreground hover:text-foreground">Log out</button>
       </form>
     </div>
@@ -37,3 +41,9 @@
 <main class="mx-auto max-w-5xl px-4 py-8">
   {@render children()}
 </main>
+
+{#if data.authed}
+  <footer class="mx-auto max-w-5xl px-4 pb-8 text-xs text-muted-foreground">
+    <a href={RELEASE_URL} class="hover:text-foreground" rel="noopener noreferrer">Spotcraft v{VERSION}</a>
+  </footer>
+{/if}

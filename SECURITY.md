@@ -22,7 +22,7 @@ unless you'd rather stay anonymous.
 
 In scope: the agent, the dashboard, the deploy workflow and script, the compose files, the
 first-boot setup and the OpenTofu module in this repository, and the published
-`spotcraft-agent` and `spotcraft-dashboard` images.
+`spotcraft` image (the agent and the dashboard).
 
 Out of scope: the apps you host with Spotcraft, and vulnerabilities in third-party images
 (Caddy, VictoriaMetrics, cAdvisor and others) unless Spotcraft's configuration makes them
