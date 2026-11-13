@@ -1,3 +1,4 @@
+import { NAME } from '@spotcraft/agent/app-spec'
 import { error, fail, redirect } from '@sveltejs/kit'
 import {
   appLogs,
@@ -13,6 +14,8 @@ import type { Actions, PageServerLoad } from './$types'
 
 export const load: PageServerLoad = async ({ params }) => {
   const { name } = params
+  // The name goes into PromQL and agent URLs before the app is looked up: only valid names.
+  if (!new RegExp(NAME).test(name)) error(404, 'No such app')
   // Everything starts at once; only the 404 waits for the app itself.
   const [app, cpu, memory, response, up, uptimeDay, uptimeWeek, logs] = await Promise.all([
     getApp(name),
