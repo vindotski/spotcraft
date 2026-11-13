@@ -12,7 +12,7 @@ import {
 import { CloudflareError } from './cloudflare.ts'
 import { DomainConflict, type Domains } from './domains.ts'
 import type { Runner, RunResult } from './runner.ts'
-import type { Store } from './store.ts'
+import type { AppFiles, Store } from './store.ts'
 import { projectName, renderCompose, renderSite } from './templates.ts'
 
 export class AgentError extends Error {
@@ -107,7 +107,6 @@ export class Apps {
   readonly settings: AgentSettings
   readonly #domains: Domains | undefined
   readonly #access: AccessApps | undefined
-  #sitesStale = false
   #queue: Promise<unknown> = Promise.resolve()
 
   /** Without `databases`, apps can't ask for a database (the server has no Postgres). */
@@ -339,24 +338,33 @@ export class Apps {
    */
   refreshSites(): Promise<string[]> {
     return this.#exclusive(async () => {
-      const changed: string[] = []
+      const pending: { spec: AppSpec; files: AppFiles; site: string }[] = []
       for (const spec of await this.#store.list()) {
         const files = await this.#store.read(spec.name)
         const site = renderSite(spec, this.settings)
-        if (!files || files.site === site) continue
-        await this.#store.write(spec.name, { ...files, site })
-        changed.push(spec.name)
+        if (files && files.site !== site) pending.push({ spec, files, site })
       }
-      // Stays set until a reload succeeds, so a retry still reloads files written before.
-      if (changed.length > 0) this.#sitesStale = true
-      if (this.#sitesStale) {
-        const reload = await this.#reloadCaddy()
-        if (reload.code !== 0) {
-          throw new AgentError('Caddy rejected the rewritten sites', 500, tail(reload))
+      if (pending.length === 0) return []
+      // Protected apps' new hosts go behind Access before Caddy serves them.
+      const access = this.#access
+      if (access) {
+        for (const { spec } of pending.filter((p) => p.spec.protected)) {
+          await this.#cloudflare(`protect ${spec.name} with Cloudflare Access`, () =>
+            access.sync(spec.name, servedHosts(spec, this.settings.appsDomain), true),
+          )
         }
-        this.#sitesStale = false
       }
-      return changed
+      for (const { spec, files, site } of pending)
+        await this.#store.write(spec.name, { ...files, site })
+      const reload = await this.#reloadCaddy()
+      if (reload.code !== 0) {
+        // Put the previous sites back, so Caddy keeps a configuration it accepts; the next
+        // attempt rewrites them again.
+        for (const { spec, files } of pending) await this.#store.write(spec.name, files)
+        await this.#reloadCaddy()
+        throw new AgentError('Caddy rejected the rewritten sites', 500, tail(reload))
+      }
+      return pending.map((p) => p.spec.name)
     })
   }
 

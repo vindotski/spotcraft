@@ -95,9 +95,10 @@ describe('apps domain (ADR 0021)', () => {
     assert.equal(reloads.length, 1, 'no reload without a change')
   })
 
-  it('retries the reload after Caddy failed, even with nothing new to write', async () => {
+  it('puts the previous sites back when Caddy rejects the rewrite, and tries again later', async () => {
     start({ appsDomain: 'spotcraft.dev', edge: 'direct' })
     await put('tagtape', spec)
+    const before = await site('tagtape')
     let caddyUp = false
     const flaky: Runner = async (_file, args) =>
       args.includes('reload') && !caddyUp
@@ -108,8 +109,20 @@ describe('apps domain (ADR 0021)', () => {
       edge: 'cloudflare',
     })
     await assert.rejects(apps.refreshSites())
+    assert.equal(await site('tagtape'), before, 'Caddy keeps a configuration it accepts')
     caddyUp = true
-    assert.deepEqual(await apps.refreshSites(), [], 'already written')
+    assert.deepEqual(await apps.refreshSites(), ['tagtape'])
+    assert.match(await site('tagtape'), /^http:\/\/tagtape\.spotcraft\.dev \{$/m)
+  })
+
+  it('writes no site block for an app left without an address', async () => {
+    start({ appsDomain: 'spotcraft.dev', edge: 'direct' })
+    await put('blog', spec)
+    const apps = new Apps(new Store(dir), run, 'caddy', undefined, { edge: 'direct' })
+    assert.deepEqual(await apps.refreshSites(), ['blog'])
+    const text = await site('blog')
+    assert.doesNotMatch(text, /\{/, 'no block, so Caddy accepts the configuration')
+    assert.match(text, /has no address/)
   })
 
   it('requires a domain when there is no apps domain', async () => {

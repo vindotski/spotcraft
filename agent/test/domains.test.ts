@@ -399,6 +399,27 @@ describe('protected apps behind Cloudflare Access (ADR 0021)', () => {
     assert.equal(accessApps().length, 0)
   })
 
+  it("protects a protected app's new hosts when the apps domain changes", async () => {
+    await put('tagtape', { ...spec, protected: true })
+    const api = new CloudflareApi('cf-token', ACCOUNT, cf.fetchImpl)
+    const moved = new Apps(
+      new Store(dir),
+      runner,
+      'caddy',
+      undefined,
+      { appsDomain: 'apps.example.com', edge: 'cloudflare' },
+      {
+        domains: new Domains({ api, appsZoneId: APPS_ZONE, tunnelId: TUNNEL }),
+        access: new AccessApps(api, POLICY),
+      },
+    )
+    assert.deepEqual(await moved.refreshSites(), ['tagtape'])
+    assert.deepEqual(
+      accessApps()[0]?.destinations?.map((d) => d.uri),
+      ['tagtape.apps.example.com'],
+    )
+  })
+
   it('refuses protection when the server has no Access policy', async () => {
     const plain = buildApp({
       token: TOKEN,
