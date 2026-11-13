@@ -154,6 +154,11 @@ describe('agent', () => {
     assert.match(site, /^tagtape\.app \{$/m)
     assert.match(site, /reverse_proxy app-tagtape-blue:3000/)
     assert.match(site, /^www\.tagtape\.app \{$/m)
+    // Defaults only when the app sends none of its own (Caddy's `?`); no CSP.
+    assert.match(site, /^\t\t\?X-Frame-Options "DENY"$/m)
+    assert.match(site, /^\t\t\?Permissions-Policy "camera=\(\), microphone=\(\), /m)
+    assert.match(site, /^\t\t\?Cross-Origin-Opener-Policy "same-origin"$/m)
+    assert.doesNotMatch(site, /Content-Security-Policy/)
 
     const steps = docker.calls.map((args) => args.find((a) => ['pull', 'up', 'reload'].includes(a)))
     assert.deepEqual(steps.filter(Boolean), ['pull', 'up', 'reload'])

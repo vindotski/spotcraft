@@ -90,6 +90,10 @@ ${hosts.map((host) => scheme + host).join(', ')} {
 \t\tStrict-Transport-Security "max-age=31536000; includeSubDomains"
 \t\tX-Content-Type-Options "nosniff"
 \t\tReferrer-Policy "strict-origin-when-cross-origin"
+\t\t# Defaults: sent only when the app doesn't send its own. CSP is the app's to set.
+\t\t?X-Frame-Options "DENY"
+\t\t?Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+\t\t?Cross-Origin-Opener-Policy "same-origin"
 \t\t-Server
 \t}
 \treverse_proxy ${upstreamAlias(service)}:${app.port} {

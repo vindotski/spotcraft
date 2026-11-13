@@ -137,6 +137,24 @@ A `www.` site redirecting to the custom domain is added only for root domains (t
 e.g. `tagtape.app`); subdomains get none, so Caddy never requests certificates for unused names.
 A root domain under a two-part suffix (`example.co.uk`) counts as a subdomain here and gets no
 `www.`; point `www.` at the app yourself if you need it.
+Every app's responses are compressed (zstd, gzip) and get these headers from Caddy:
+
+- always: `Strict-Transport-Security` (a year, with subdomains), `X-Content-Type-Options: nosniff`
+  and `Referrer-Policy: strict-origin-when-cross-origin`, and the `Server` header is removed;
+- only if the app sends none of its own: `X-Frame-Options: DENY`, a `Permissions-Policy` that
+  turns off camera, microphone, geolocation, payment and USB, and
+  `Cross-Origin-Opener-Policy: same-origin`.
+
+An app's own value for one of the defaults wins, so an app can loosen them. The
+`Content-Security-Policy` is the app's to set, as no default fits every app.
+
+- To be framed elsewhere, an app sends its own `X-Frame-Options`, or a CSP with `frame-ancestors`,
+  which browsers follow instead.
+- To use the camera, microphone, geolocation, payment or USB, it sends its own
+  `Permissions-Policy` (e.g. `camera=(self)`). A CSP doesn't change these.
+- For popups that need `window.opener` (some OAuth flows), it sends its own
+  `Cross-Origin-Opener-Policy` (e.g. `same-origin-allow-popups`).
+
 Caddy passes the visitor's address to the app as `X-Forwarded-For`. With `EDGE=cloudflare`,
 site blocks are plain HTTP (`http://host`): Cloudflare terminates TLS and a tunnel delivers
 requests to Caddy.
