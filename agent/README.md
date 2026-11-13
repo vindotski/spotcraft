@@ -22,7 +22,6 @@ The files it writes are the only record of which apps exist:
 | GET    | `/apps`                 | settings plus `state`, `health`, `status`, `hostnames`     |
 | GET    | `/apps/:name`           | one app, or 404                                            |
 | PUT    | `/apps/:name`           | create or update, then deploy; returns the app with status |
-|        |                         | `?takeOver=true` replaces a custom domain's DNS records    |
 | DELETE | `/apps/:name`           | stop and remove the app and its site; 204, or 404          |
 |        |                         | `?purge=true` also deletes its database and role           |
 | GET    | `/apps/:name/domain`    | custom domain status and records still to create           |
@@ -44,6 +43,9 @@ The files it writes are the only record of which apps exist:
 | `readOnly`  | `true`  | read-only root filesystem with a 64 MB writable `/tmp`    |
 | `database`  | `false` | its own Postgres database, given to it as `DATABASE_URL`  |
 | `protected` | `false` | behind Cloudflare Access (needs an Access policy)         |
+| `takeOver`  | `false` | deploys may replace a custom domain's foreign DNS records |
+
+`database`, `protected` and `takeOver` keep their current value when left out.
 
 App names: lower-case letters, digits and dashes, 2–32 characters; `caddy`, `agent`,
 `node-exporter`, `cadvisor`, `postgres`, `www` and `fallback` are reserved. A host can belong
@@ -67,7 +69,7 @@ also gets `www.`.
 
 - **The domain's zone is in the account**: the agent creates a proxied CNAME to the apps tunnel,
   with the comment `spotcraft:<name>`. It refuses (409) if the host already has A, AAAA or CNAME
-  records it didn't make, unless the deploy says `?takeOver=true`. Other records such as MX and
+  records it didn't make, unless the app's `takeOver` setting is on (ADR 0022). Other records such as MX and
   TXT are never touched.
 - **Any other domain**: the agent creates a Cloudflare for SaaS custom hostname on the apps zone.
   Its owner adds a CNAME to `<name>.<APPS_DOMAIN>`, plus any TXT records `GET /apps/:name/domain`

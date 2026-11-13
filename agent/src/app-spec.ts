@@ -19,6 +19,11 @@ export interface AppSpec {
   database: boolean
   /** Behind Cloudflare Access: visitors sign in as one of the owners first (ADR 0021). */
   protected?: boolean
+  /**
+   * Every deploy may replace the custom domain's A, AAAA and CNAME records that Spotcraft
+   * didn't make, e.g. ones pointing at an old server (ADR 0022).
+   */
+  takeOver?: boolean
 }
 
 // Names end up in container names, network aliases and file paths.
@@ -78,10 +83,12 @@ export const appBodySchema = {
     database: { type: 'boolean' },
     // Like `database`: left out, an update keeps the current setting.
     protected: { type: 'boolean' },
+    // Like `database`: left out, an update keeps the current setting.
+    takeOver: { type: 'boolean' },
   },
 } as const
 
-/** The PUT body: everything but the name, and `database` may be left out. */
+/** The PUT body: everything but the name; `database`, `protected` and `takeOver` may be left out. */
 export type AppBody = Omit<AppSpec, 'name' | 'database'> & { database?: boolean }
 
 /** How traffic reaches the apps server (ADR 0021). */

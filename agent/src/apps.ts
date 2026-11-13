@@ -217,9 +217,9 @@ export class Apps {
 
   /**
    * Writes the app's files and rolls it out; on failure, puts the previous version back.
-   * With `takeOver`, a custom domain's existing DNS records are replaced (ADR 0021).
+   * With `spec.takeOver`, a custom domain's existing DNS records are replaced (ADR 0022).
    */
-  deploy(spec: AppSpec, { takeOver = false } = {}): Promise<AppStatus> {
+  deploy(spec: AppSpec): Promise<AppStatus> {
     return this.#exclusive(async () => {
       const previousSpec = await this.#store.get(spec.name)
       const oldHosts = previousSpec ? customHosts(previousSpec) : []
@@ -228,7 +228,7 @@ export class Apps {
       const domains = this.#domains
       const undoDns = domains
         ? await this.#cloudflare(`set up DNS for ${spec.domain}`, () =>
-            domains.attach(spec.name, newHosts, { takeOver }),
+            domains.attach(spec.name, newHosts, { takeOver: Boolean(spec.takeOver) }),
           )
         : undefined
       const access = this.#access

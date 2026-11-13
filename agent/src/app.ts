@@ -83,18 +83,12 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
     },
   )
 
-  app.put<{ Params: NameParams; Body: AppBody; Querystring: { takeOver: boolean } }>(
+  app.put<{ Params: NameParams; Body: AppBody }>(
     '/apps/:name',
     {
       schema: {
         params: nameParamsSchema,
         body: appBodySchema,
-        // Replace a custom domain's existing DNS records (ADR 0021).
-        querystring: {
-          type: 'object',
-          additionalProperties: false,
-          properties: { takeOver: { type: 'boolean', default: false } },
-        },
       },
     },
     async (request, reply) => {
@@ -132,10 +126,9 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
         const clash = servedHosts(other, appsDomain).find((host) => wanted.includes(host))
         if (clash) return reply.code(409).send({ error: `${clash} is used by ${other.name}` })
       }
-      return apps.deploy(
-        { name, ...request.body, database, protected: protect },
-        { takeOver: request.query.takeOver },
-      )
+      // Left out, `takeOver` keeps its current value too (ADR 0022).
+      const takeOver = request.body.takeOver ?? current?.takeOver ?? false
+      return apps.deploy({ name, ...request.body, database, protected: protect, takeOver })
     },
   )
 

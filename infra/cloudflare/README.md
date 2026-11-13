@@ -87,7 +87,7 @@ small:
    wildcard's, and each app's domain) to 60 seconds, so resolvers forget them quickly.
 3. Deploy with `EDGE=cloudflare` and the tunnel tokens. The outage starts here.
 4. Right away, apply with `route_dns = true`. The wildcard and the dashboard now go through the
-   tunnels. Then redeploy each app that has a custom domain with **Take over existing DNS
+   tunnels. Then edit each app that has a custom domain and save it with **Take over existing DNS
    records** ticked (or point its record at the tunnel by hand). The outage ends as resolvers
    pick up the new records, usually within a few minutes.
 5. Close ports 80 and 443 with `edge = "cloudflare"` in `infra/hetzner`.
