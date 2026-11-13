@@ -23,10 +23,11 @@ that supersedes the old one; old records are never rewritten.
 | 0016 | [A server-only backend kit, starting with guest accounts](0016-backend-kit.md)             | accepted                                     |
 | 0017 | [A local stack that matches the server](0017-local-stack.md)                               | accepted                                     |
 | 0018 | [The dashboard lists and deletes an app's users](0018-user-management.md)                  | accepted                                     |
-| 0019 | [One version for the project, including its npm packages](0019-one-version-with-npm.md)    | accepted                                     |
+| 0019 | [One version for the project, including its npm packages](0019-one-version-with-npm.md)    | accepted, partly superseded by 0027          |
 | 0021 | [Apps get a default subdomain; Cloudflare can sit in front](0021-cloudflare-edge.md)       | accepted, partly superseded by 0022 and 0023 |
 | 0022 | [Taking over a custom domain's DNS records is an app setting](0022-takeover-setting.md)    | accepted                                     |
 | 0023 | [A Cloudflare Access sign-in also signs in to the dashboard](0023-access-sign-in.md)       | accepted                                     |
 | 0024 | [The website is plain Astro, published on GitHub Pages](0024-website-on-pages.md)          | accepted                                     |
 | 0025 | [One image runs the agent and the dashboard as two containers](0025-one-image.md)          | accepted                                     |
 | 0026 | [Spotcraft runs on one server](0026-one-server.md)                                         | accepted                                     |
+| 0027 | [The kit has its own version](0027-kit-version.md)                                         | accepted                                     |

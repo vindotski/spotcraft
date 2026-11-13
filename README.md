@@ -64,11 +64,12 @@ To upgrade, run the Deploy workflow with the new version. To roll back, run it w
 
 ## Versions
 
-Spotcraft has one version for everything, following [Semantic Versioning](https://semver.org).
-The `spotcraft` image is tagged `0.1.0` and `0.1` (and `latest` from `main`), and the npm packages for apps,
-`@spotcraft/kit` and `spotcraft` (the CLI), carry the same version. What counts as a breaking change
-is defined in [ADR 0019](docs/decisions/0019-one-version-with-npm.md); changes are listed in the
-[changelog](CHANGELOG.md).
+Spotcraft has one version, following [Semantic Versioning](https://semver.org). The `spotcraft`
+image is tagged `0.1.0` and `0.1` (and `latest` from `main`), and the CLI on npm (`spotcraft`)
+carries the same version. The kit for apps, `@spotcraft/kit`, has its own version and
+[changelog](packages/kit/CHANGELOG.md) ([ADR 0027](docs/decisions/0027-kit-version.md)). What
+counts as a breaking change is defined in [ADR 0019](docs/decisions/0019-one-version-with-npm.md);
+changes are listed in the [changelog](CHANGELOG.md).
 
 ## Repository
 

@@ -46,6 +46,7 @@ const expected = [
   '/docs/guides/backend-kit',
   '/docs/decisions',
   '/docs/changelog',
+  '/docs/kit-changelog',
   '/404',
   ...readdirSync(join(repo, 'docs/decisions'))
     .filter((name) => /^\d{4}-[a-z0-9-]+\.md$/.test(name))

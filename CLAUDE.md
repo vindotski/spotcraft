@@ -40,7 +40,8 @@ user's checkout without asking; they leave orphaned processes on 3000/5173.
   that supersedes the old one.
 - **Docs move with the code:** update the package README and the `Unreleased` section of
   `CHANGELOG.md` in the same change. Breaking changes need migration steps.
-- **One version** for the project (ADR 0019), set with `node scripts/check-versions.ts`.
+- **One version** for the project (ADR 0019), set with `node scripts/check-versions.ts`; the kit
+  has its own (ADR 0027, `--kit`), released first with `kit-v*` tags.
 - **Workflows:** actions pinned to commit SHAs, least-privilege permissions (skill
   `github-workflows`).
 - **Supply chain:** pinned image digests in Compose files, pinned CLIs (`pnpm exec`, not `npx`),
