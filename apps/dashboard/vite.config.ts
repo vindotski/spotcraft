@@ -24,7 +24,9 @@ export default defineConfig({
           'img-src': ['self', 'data:'],
           'font-src': ['self'],
           'connect-src': ['self'],
-          'form-action': ['self'],
+          // Log out through Cloudflare Access redirects on to the team domain, and form-action
+          // also covers redirects after a form post. The team domain is set at run time.
+          'form-action': ['self', 'https://*.cloudflareaccess.com'],
           'frame-ancestors': ['none'],
           'base-uri': ['self'],
           'object-src': ['none'],

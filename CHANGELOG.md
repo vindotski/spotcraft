@@ -10,6 +10,13 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+### Fixed
+
+- **Log out with Cloudflare Access** now lands on the Access sign-in. Before, the dashboard's
+  CSP (`form-action 'self'`) blocked Cloudflare's redirect to the team domain, so the page stayed
+  put until a refresh. The CSP now allows `https://*.cloudflareaccess.com` for form redirects,
+  and the logout passes `returnTo` so Cloudflare sends the browser back to the dashboard.
+
 ## [0.4.0] - 2026-11-13
 
 Spotcraft runs on one server, from one image, and its website moved to GitHub Pages. Signing in

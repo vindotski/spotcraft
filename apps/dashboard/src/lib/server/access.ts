@@ -47,6 +47,16 @@ export function accessConfig(
   return { teamDomain, audience }
 }
 
+/**
+ * Where Log out sends a browser that signed in through Access: Cloudflare ends the sign-in, then
+ * returns to the dashboard, where Access asks for it again. Always `https`: visitors reach
+ * Cloudflare over HTTPS even though the request reaches the dashboard over plain HTTP. Access
+ * refuses a `returnTo` outside the account, so a forged Host can't send the browser elsewhere.
+ */
+export function accessLogoutUrl(host: string): string {
+  return `/cdn-cgi/access/logout?returnTo=${encodeURIComponent(`https://${host}/`)}`
+}
+
 /** Header Cloudflare Access adds to every request it lets through. */
 export const ACCESS_HEADER = 'cf-access-jwt-assertion'
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
 import { createLocalJWKSet, errors, exportJWK, generateKeyPair, SignJWT } from 'jose'
-import { accessConfig, accessVerifier } from '../src/lib/server/access.ts'
+import { accessConfig, accessLogoutUrl, accessVerifier } from '../src/lib/server/access.ts'
 
 const teamDomain = 'example.cloudflareaccess.com'
 const audience = 'a'.repeat(64)
@@ -103,5 +103,21 @@ describe('Access settings', () => {
     assert.throws(() => accessConfig(undefined, audience), /both/)
     assert.throws(() => accessConfig('example.com', audience), /cloudflareaccess\.com/)
     assert.throws(() => accessConfig(teamDomain, 'not-hex'), /AUD/)
+  })
+})
+
+describe('Log out through Cloudflare Access', () => {
+  it('returns to the dashboard over https after the Access logout', () => {
+    assert.equal(
+      accessLogoutUrl('dash.example.com'),
+      '/cdn-cgi/access/logout?returnTo=https%3A%2F%2Fdash.example.com%2F',
+    )
+  })
+
+  it('keeps a port and encodes it', () => {
+    assert.equal(
+      accessLogoutUrl('dash.example.com:8443'),
+      '/cdn-cgi/access/logout?returnTo=https%3A%2F%2Fdash.example.com%3A8443%2F',
+    )
   })
 })
