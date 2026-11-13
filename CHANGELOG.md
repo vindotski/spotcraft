@@ -12,6 +12,11 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Added
 
+- **The website moved to GitHub Pages** ([ADR 0024](docs/decisions/0024-website-on-pages.md)).
+  It's now plain Astro with no client-side JavaScript, deployed from `main` by the new Pages
+  workflow, with a build check for missing pages, broken links and anchors. The URLs are
+  unchanged.
+
 - **One sign-in behind Cloudflare Access** ([ADR 0023](docs/decisions/0023-access-sign-in.md)):
   with the new `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` variables on the `production`
   environment, the dashboard accepts Access's signed token and skips its password. Log out
@@ -20,6 +25,11 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 - The dashboard shows the running Spotcraft version in its footer once you're signed in,
   linked to the release notes.
+
+### Removed
+
+- The `spotcraft-site` image is no longer built or published; the site isn't an app on the
+  apps server any more.
 
 ### Changed
 

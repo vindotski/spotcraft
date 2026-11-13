@@ -78,7 +78,7 @@ is defined in [ADR 0019](docs/decisions/0019-one-version-with-npm.md); changes a
 | ------------------------ | ----------------------------------------------------- |
 | `agent`                  | the agent (Fastify), runs on the apps server          |
 | `apps/dashboard`         | the dashboard (SvelteKit), runs on the ops server     |
-| `apps/site`              | the project website                                   |
+| `apps/site`              | the website (Astro, on GitHub Pages)                  |
 | `packages/cli`           | the `spotcraft` command: `spotcraft dev` local stack  |
 | `packages/kit`           | app databases' `auth` schema and their provisioning   |
 | `packages/ui`            | shared components and theme (shadcn-svelte)           |

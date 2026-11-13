@@ -18,7 +18,7 @@ that supersedes the old one; old records are never rewritten.
 | 0011 | [Spotcraft deploys itself with a manual GitHub workflow over SSH](0011-deploy-workflow.md) | accepted                                     |
 | 0012 | [Hardening from the v0.1.0 audit](0012-hardening-before-v0-1.md)                           | accepted                                     |
 | 0013 | [One Semantic Version for the whole project](0013-one-version.md)                          | superseded by 0019                           |
-| 0014 | [The website is static and hosted on Spotcraft itself](0014-website.md)                    | accepted                                     |
+| 0014 | [The website is static and hosted on Spotcraft itself](0014-website.md)                    | accepted, partly superseded by 0024          |
 | 0015 | [One Postgres on the apps server, a database per app](0015-shared-postgres.md)             | accepted                                     |
 | 0016 | [A server-only backend kit, starting with guest accounts](0016-backend-kit.md)             | accepted                                     |
 | 0017 | [A local stack that matches the server](0017-local-stack.md)                               | accepted                                     |
@@ -27,3 +27,4 @@ that supersedes the old one; old records are never rewritten.
 | 0021 | [Apps get a default subdomain; Cloudflare can sit in front](0021-cloudflare-edge.md)       | accepted, partly superseded by 0022 and 0023 |
 | 0022 | [Taking over a custom domain's DNS records is an app setting](0022-takeover-setting.md)    | accepted                                     |
 | 0023 | [A Cloudflare Access sign-in also signs in to the dashboard](0023-access-sign-in.md)       | accepted                                     |
+| 0024 | [The website is plain Astro, published on GitHub Pages](0024-website-on-pages.md)          | accepted                                     |

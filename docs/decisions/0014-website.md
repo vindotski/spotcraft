@@ -5,7 +5,7 @@ status: accepted
 implementation: done
 date: 2026-11-07
 supersedes: []
-superseded_by: []
+superseded_by: [24]
 notes: "Settles the site's static-vs-server question left open earlier."
 ---
 
