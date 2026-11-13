@@ -1,12 +1,6 @@
-output "apps_tunnel_token" {
-  description = "Token for cloudflared on the apps server: the CLOUDFLARE_TUNNEL_TOKEN_APPS secret."
+output "tunnel_token" {
+  description = "Token for cloudflared on the server: the CLOUDFLARE_TUNNEL_TOKEN secret."
   value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.main["apps"].token
-  sensitive   = true
-}
-
-output "ops_tunnel_token" {
-  description = "Token for cloudflared on the ops server: the CLOUDFLARE_TUNNEL_TOKEN_OPS secret."
-  value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.main["ops"].token
   sensitive   = true
 }
 
@@ -30,8 +24,7 @@ output "dashboard_settings" {
 output "next_steps" {
   description = "What to do after an apply."
   value       = <<-EOT
-    1. tofu output -raw apps_tunnel_token  → secret CLOUDFLARE_TUNNEL_TOKEN_APPS
-       tofu output -raw ops_tunnel_token   → secret CLOUDFLARE_TUNNEL_TOKEN_OPS
+    1. tofu output -raw tunnel_token  → secret CLOUDFLARE_TUNNEL_TOKEN
     2. Copy agent_settings and dashboard_settings into variables of the same names on the
        production environment, plus CF_ACCESS_TEAM_DOMAIN (<team>.cloudflareaccess.com, from
        Zero Trust settings), and the agent's own token (README) into the secret

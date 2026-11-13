@@ -4,22 +4,8 @@ resource "hcloud_ssh_key" "deploy" {
   labels     = local.labels
 }
 
-resource "hcloud_network" "main" {
-  name     = "spotcraft"
-  ip_range = "10.0.0.0/16"
-  labels   = local.labels
-}
-
-resource "hcloud_network_subnet" "main" {
-  network_id   = hcloud_network.main.id
-  type         = "cloud"
-  network_zone = "eu-central"
-  ip_range     = "10.0.0.0/24"
-}
-
-# Public traffic: SSH, ping and, unless Cloudflare Tunnels deliver it (edge = "cloudflare"),
-# HTTP and HTTPS (incl. HTTP/3). The private network is not filtered by Hetzner firewalls;
-# ufw on each server covers that side.
+# Public traffic: SSH, ping and, unless a Cloudflare Tunnel delivers it (edge = "cloudflare"),
+# HTTP and HTTPS (incl. HTTP/3).
 resource "hcloud_firewall" "main" {
   name   = "spotcraft"
   labels = local.labels
@@ -66,7 +52,6 @@ resource "hcloud_server" "main" {
   labels             = merge(local.labels, { role = each.key })
 
   user_data = templatefile("${path.module}/../cloud-init.yaml", {
-    role           = each.key
     deploy_ssh_key = trimspace(var.deploy_ssh_public_key)
   })
 
@@ -74,13 +59,6 @@ resource "hcloud_server" "main" {
     ipv4_enabled = true
     ipv6_enabled = true
   }
-
-  network {
-    network_id = hcloud_network.main.id
-    ip         = local.private_ips[each.key]
-  }
-
-  depends_on = [hcloud_network_subnet.main]
 
   lifecycle {
     # cloud-init only runs on first boot; editing it later must not replace a server.

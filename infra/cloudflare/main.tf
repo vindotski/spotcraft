@@ -26,7 +26,7 @@ resource "cloudflare_bot_management" "main" {
 }
 
 # --- Tunnels ---------------------------------------------------------------------------------
-# Remotely managed: the ingress lives here, and each server only needs its tunnel's token.
+# Remotely managed: the ingress lives here, and the server only needs the tunnel's token.
 resource "cloudflare_zero_trust_tunnel_cloudflared" "main" {
   for_each = local.tunnels
 
@@ -72,7 +72,7 @@ resource "cloudflare_dns_record" "dashboard" {
   zone_id = data.cloudflare_zone.main[local.dashboard_zone].id
   name    = var.dashboard_domain
   type    = "CNAME"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.main["ops"].id}.cfargotunnel.com"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.main["apps"].id}.cfargotunnel.com"
   proxied = true
   ttl     = 1
   comment = "spotcraft: dashboard"

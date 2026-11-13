@@ -24,7 +24,7 @@ const apps = new Apps(
   execRunner,
   config.caddyContainer,
   databases,
-  { appsDomain: config.appsDomain, edge: config.edge },
+  { appsDomain: config.appsDomain, dashboardDomain: config.dashboardDomain, edge: config.edge },
   cloudflare,
 )
 const app = buildApp({

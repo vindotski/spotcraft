@@ -8,7 +8,7 @@ export interface DomainsOptions {
   api: CloudflareApi
   /** Zone of the apps domain: custom hostnames (Cloudflare for SaaS) live there. */
   appsZoneId: string
-  /** The apps server's tunnel; same-account domains get a proxied CNAME to it. */
+  /** The server's tunnel; same-account domains get a proxied CNAME to it. */
   tunnelId: string
 }
 

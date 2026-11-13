@@ -9,7 +9,7 @@
 **/.env
 **/.env.*
 !**/.env.example
-infra/hetzner/.terraform
+**/.terraform
 **/*.tfstate
 **/*.tfstate.*
 **/*.tfvars

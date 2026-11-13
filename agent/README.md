@@ -1,7 +1,7 @@
 # @spotcraft/agent
 
-Fastify service on the **apps server** that deploys apps when the dashboard asks. It listens
-on the private network only, answers only the addresses in `AGENT_ALLOWED_IPS` (plus its own
+Fastify service on the Spotcraft server that deploys apps when the dashboard asks. It is
+reachable only on Docker networks (never on a host port), answers only the addresses in `AGENT_ALLOWED_IPS` (plus its own
 loopback, for the health check), and requires a bearer token on every route but `/health`.
 
 The files it writes are the only record of which apps exist:
@@ -47,9 +47,11 @@ The files it writes are the only record of which apps exist:
 
 `database`, `protected` and `takeOver` keep their current value when left out.
 
-App names: lower-case letters, digits and dashes, 2–32 characters; `caddy`, `agent`,
-`node-exporter`, `cadvisor`, `postgres`, `www` and `fallback` are reserved. A host can belong
-to one app only: a custom domain can't be another app's default host.
+App names: lower-case letters, digits and dashes, 2–32 characters. The names of the server's
+own services (`caddy`, `cloudflared`, `agent`, `dashboard`, `postgres`, `victoriametrics`,
+`vmagent`, `blackbox`, `node-exporter`, `cadvisor`), since an app's service joins the same
+network, plus `www` and `fallback`, are reserved. A host can belong to one app only: a custom
+domain can't be another app's default host, and no app may use `DASHBOARD_DOMAIN` (409).
 
 With `APPS_DOMAIN` set, every app is served at `<name>.<APPS_DOMAIN>` (its default host,
 first in `hostnames`) and, if it has one, at its custom domain too (ADR 0021).
@@ -151,18 +153,19 @@ while the app is down.
 
 ## Settings
 
-| Env               | Default                  | Meaning                               |
-| ----------------- | ------------------------ | ------------------------------------- |
-| `AGENT_TOKEN`     | —                        | required, at least 32 characters      |
-| `HOST`            | `127.0.0.1`              | bind address                          |
-| `PORT`            | `4000`                   | listen port                           |
-| `DATA_DIR`        | `/opt/spotcraft`         | holds `apps/` and `sites/`            |
-| `CADDY_CONTAINER` | `spotcraft-apps-caddy-1` | container reloaded after site changes |
-| `POSTGRES_URL`    | —                        | the agent's Postgres role (optional)  |
-| `APPS_DOMAIN`     | —                        | apps get `<name>.<APPS_DOMAIN>`       |
-| `EDGE`            | `direct`                 | `cloudflare`: sites are plain HTTP    |
-| `CLOUDFLARE_*`    | —                        | custom domains, Access (see below)    |
-| `LOG_LEVEL`       | `info`                   | log level                             |
+| Env                | Default                  | Meaning                                 |
+| ------------------ | ------------------------ | --------------------------------------- |
+| `AGENT_TOKEN`      | —                        | required, at least 32 characters        |
+| `HOST`             | `127.0.0.1`              | bind address                            |
+| `PORT`             | `4000`                   | listen port                             |
+| `DATA_DIR`         | `/opt/spotcraft`         | holds `apps/` and `sites/`              |
+| `CADDY_CONTAINER`  | `spotcraft-apps-caddy-1` | container reloaded after site changes   |
+| `POSTGRES_URL`     | —                        | the agent's Postgres role (optional)    |
+| `APPS_DOMAIN`      | —                        | apps get `<name>.<APPS_DOMAIN>`         |
+| `DASHBOARD_DOMAIN` | —                        | the dashboard's host; apps can't use it |
+| `EDGE`             | `direct`                 | `cloudflare`: sites are plain HTTP      |
+| `CLOUDFLARE_*`     | —                        | custom domains, Access (see below)      |
+| `LOG_LEVEL`        | `info`                   | log level                               |
 
 The agent runs from the `spotcraft` image (the root `Dockerfile`, shared with the dashboard;
 Compose starts it with `working_dir: /app/agent` and `command: ["src/index.ts"]`): distroless

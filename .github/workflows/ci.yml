@@ -19,8 +19,8 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # The kit's database tests run against the same Postgres image as the apps server
-    # (infra/apps-server/compose.yaml); keep the two in step.
+    # The kit's database tests run against the same Postgres image as the server
+    # (infra/server/compose.yaml); keep the two in step.
     services:
       postgres:
         image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
@@ -50,11 +50,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - name: Validate compose files
-        run: |
-          for s in apps-server ops-server; do
-            docker compose -f infra/$s/compose.yaml --env-file infra/$s/.env.example config --quiet
-          done
+      - name: Validate the compose file
+        run: docker compose -f infra/server/compose.yaml --env-file infra/server/.env.example config --quiet
       - name: Check the OpenTofu modules (format, validate)
         env:
           TOFU: ghcr.io/opentofu/opentofu:1.13.9@sha256:f5aef7f2632b490e3c289a239d7974497d0583f3df6bfa35e8eb31a367ee5ec0

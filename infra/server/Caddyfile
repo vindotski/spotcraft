@@ -1,0 +1,50 @@
+# Caddy on the Spotcraft server: the dashboard at DASHBOARD_DOMAIN, and one site block per hosted
+# app in sites/<app>.caddy (written by the agent). HTTPS is automatic (Let's Encrypt), or plain
+# HTTP behind a Cloudflare Tunnel (DASHBOARD_SCHEME=http://; the agent writes http:// blocks),
+# where Cloudflare holds the certificates.
+{
+	servers {
+		# Behind a Cloudflare Tunnel (EDGE=cloudflare) requests come from cloudflared, at its fixed
+		# address on the `web` network, and carry the visitor's address in CF-Connecting-IP; the
+		# deploy then sets CADDY_TRUSTED_PROXIES to that address only. Hosted apps reach Caddy too
+		# (on `edge`) and must not be able to claim an address. Otherwise only loopback is trusted.
+		trusted_proxies static {$CADDY_TRUSTED_PROXIES:127.0.0.1/32}
+		client_ip_headers CF-Connecting-IP
+		# Slow clients can't hold connections open.
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 2m
+		}
+	}
+}
+
+{$DASHBOARD_SCHEME}{$DASHBOARD_DOMAIN} {
+	# Behind a Cloudflare Tunnel, only cloudflared may reach the dashboard (DASHBOARD_PEERS);
+	# anything else, such as a hosted app on the shared edge network, would get past Cloudflare
+	# Access, the WAF and the login rate limit. In direct mode everyone may, as on the internet.
+	@notPeer not remote_ip {$DASHBOARD_PEERS}
+	respond @notPeer 403
+
+	encode zstd gzip
+
+	# The dashboard only takes forms (logins, app settings).
+	request_body {
+		max_size 1MB
+	}
+
+	# The dashboard sends its own CSP, X-Frame-Options and Cache-Control.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	reverse_proxy dashboard:3000 {
+		# The dashboard's login lockout keys on this (XFF_DEPTH=1).
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+import /etc/caddy/sites/*.caddy

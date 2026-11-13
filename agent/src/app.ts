@@ -121,6 +121,12 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
       // No host may belong to two apps: a custom domain can't be another app's default host,
       // nor the `www.` another app's root domain redirects.
       const wanted = servedHosts({ name, domain: request.body.domain }, appsDomain)
+      // The dashboard shares Caddy: a site for its host would make Caddy refuse the whole
+      // config (ADR 0026).
+      const { dashboardDomain } = apps.settings
+      if (dashboardDomain && wanted.includes(dashboardDomain)) {
+        return reply.code(409).send({ error: `${dashboardDomain} is the dashboard's domain` })
+      }
       for (const other of await apps.list()) {
         if (other.name === name) continue
         const clash = servedHosts(other, appsDomain).find((host) => wanted.includes(host))

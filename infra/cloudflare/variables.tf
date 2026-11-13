@@ -74,7 +74,7 @@ variable "login_rate_limit" {
 }
 
 variable "route_dns" {
-  description = "Point the apps wildcard, the fallback origin and the dashboard at the tunnels. Set false while moving an existing instance, until cloudflared runs on both servers."
+  description = "Point the apps wildcard, the fallback origin and the dashboard at the tunnel. Set false while moving an existing instance, until cloudflared runs on the server."
   type        = bool
   default     = true
 }

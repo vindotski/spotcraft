@@ -152,8 +152,8 @@ describe('agent', () => {
     const from = (remoteAddress: string) =>
       guarded.inject({ url: '/apps', headers: auth, remoteAddress })
     assert.equal((await from('172.18.0.5')).statusCode, 403, 'an app container')
-    assert.equal((await from('10.0.0.3')).statusCode, 200, 'the ops server')
-    assert.equal((await from('::ffff:10.0.0.3')).statusCode, 200, 'the ops server, dual-stack')
+    assert.equal((await from('10.0.0.3')).statusCode, 200, 'the dashboard')
+    assert.equal((await from('::ffff:10.0.0.3')).statusCode, 200, 'the dashboard, dual-stack')
     assert.equal((await from('127.0.0.1')).statusCode, 200, 'the container itself (health check)')
     await guarded.close()
   })
@@ -173,6 +173,10 @@ describe('agent', () => {
       app.inject({ method: 'PUT', url: `/apps/${name}`, headers: auth, payload })
     assert.equal((await put('Bad_Name', spec)).statusCode, 400)
     assert.equal((await put('caddy', spec)).statusCode, 400)
+    // The server's own services on the shared networks (ADR 0026).
+    for (const reserved of ['dashboard', 'victoriametrics', 'cloudflared', 'blackbox']) {
+      assert.equal((await put(reserved, spec)).statusCode, 400, reserved)
+    }
     assert.equal((await put('ok', { ...spec, domain: 'evil.app {\n}' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, image: 'UPPER/case' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, tag: '-x' })).statusCode, 400)

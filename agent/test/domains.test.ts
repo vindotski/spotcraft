@@ -482,6 +482,25 @@ describe('protected apps behind Cloudflare Access (ADR 0021)', () => {
     assert.deepEqual(hosts(), ['tagtape.apps.example.com'], 'narrowed once the new site is live')
   })
 
+  it("refuses the dashboard's domain, as a custom domain or an app's default host", async () => {
+    const withDashboard = buildApp({
+      token: TOKEN,
+      apps: new Apps(new Store(dir), runner, 'caddy', undefined, {
+        appsDomain: 'spotcraft.dev',
+        dashboardDomain: 'dash.spotcraft.dev',
+        edge: 'cloudflare',
+      }),
+    })
+    const put = (name: string, payload: object) =>
+      withDashboard.inject({ method: 'PUT', url: `/apps/${name}`, headers: auth, payload })
+    const custom = await put('blog', { ...spec, domain: 'dash.spotcraft.dev' })
+    assert.equal(custom.statusCode, 409)
+    assert.match(custom.json().error, /dashboard's domain/)
+    // An app called `dash` would be served at dash.spotcraft.dev.
+    assert.equal((await put('dash', spec)).statusCode, 409)
+    await withDashboard.close()
+  })
+
   it('refuses protection when the server has no Access policy', async () => {
     const plain = buildApp({
       token: TOKEN,
