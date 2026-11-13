@@ -8,6 +8,11 @@ updates:
     cooldown: { default-days: 1 }
     groups:
       npm: { patterns: ["*"] }
+    # svelte-check can't run on TypeScript 7 alone yet (it needs 6 alongside and --tsgo);
+    # take minor and patch updates of 6 until it can.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
