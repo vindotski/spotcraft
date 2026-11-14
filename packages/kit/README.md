@@ -40,7 +40,7 @@ export const backend = backendFromEnv() // DATABASE_URL, AUTH_SECRET, PUBLIC_URL
 const { guest, headers } = await backend.currentGuest(request) // guest: Guest | null
 
 // writing (a form post): their guest, created if they have none yet
-const { guest, headers } = await backend.guest(request, { clientAddress })
+const { guest, headers } = await backend.guest(request)
 
 // …use guest.id as the owner of the app's rows, and send `headers` with the response:
 // they set or refresh the session cookie.
@@ -58,9 +58,18 @@ exists), and so would every crawler.
   can't be reached again.
 - **New guests are limited** to 30 per client address per 10 minutes (`guestLimit`), in
   memory. Over the limit, `guest()` throws `GuestLimitError` (`status` 429,
-  `retryAfterSeconds`). Returning guests are never limited.
+  `retryAfterSeconds`). Returning guests are never limited. Answer 429 with `Retry-After` when
+  `isGuestLimitError(error)` is true: it checks the shape, so it also works when the server is
+  bundled more than once and `instanceof` fails.
+- **The client address** is the last X-Forwarded-For entry, the one Spotcraft's Caddy sets
+  (`clientAddress(request, fallback)`), or `'unknown'` without the header. An IPv6 address
+  counts as its /64 (`network()`), since one home or phone may use any address in it. Pass
+  `guest(request, { clientAddress })` to choose it yourself: always do when the app runs behind
+  another proxy, or none, where a client could send any X-Forwarded-For.
 - **The schema version is checked** on first use. Against an older `auth` schema, `guest()`
-  fails with "Upgrade Spotcraft (locally: spotcraft dev migrate)".
+  fails with "Upgrade Spotcraft (locally: spotcraft dev migrate)". `backend.check()` runs the
+  same check at once, and names a database it can't reach: call it when the server starts, so
+  a wrong database fails the deploy's health check rather than the first save.
 - `backendFromEnv` stops the app at start with the variable's name if `DATABASE_URL`,
   `AUTH_SECRET` (32+ characters) or `PUBLIC_URL` (https, or http on localhost) is wrong.
   `createBackend({ databaseUrl, baseURL, secret, guestLimit })` takes them directly.
@@ -73,11 +82,12 @@ generates their `uuid` ids.
 
 ## Exports
 
-| Export        | What                                                                      |
-| ------------- | ------------------------------------------------------------------------- |
-| `.`           | `createBackend`, `backendFromEnv`, `GuestLimitError`, the `auth` tables   |
-| `./schema`    | Drizzle definitions of the `auth` tables, the SQL migrations, the version |
-| `./provision` | `provision`, `purge`, `migrate`, `authSchemaVersion`, `appDatabaseName`   |
+| Export        | What                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| `.`           | `createBackend`, `backendFromEnv`, the guest limit's error, client addresses, `auth` tables |
+| `./migrate`   | `migrateApp`, `migrationsFromFiles`: the app's own migrations                               |
+| `./schema`    | Drizzle definitions of the `auth` tables, the SQL migrations, the version                   |
+| `./provision` | `provision`, `purge`, `migrate`, `authSchemaVersion`, `appDatabaseName`                     |
 
 ## The `auth` schema
 
@@ -106,6 +116,39 @@ CREATE TABLE notes (
   body    text NOT NULL
 );
 ```
+
+## The app's migrations
+
+`@spotcraft/kit/migrate` runs the app's own migrations, in its database's `public`
+([ADR 0031](../../docs/decisions/0031-kit-app-glue.md)). Run it when the server starts, after
+`backend.check()`:
+
+```ts
+import { migrateApp, migrationsFromFiles } from '@spotcraft/kit/migrate'
+
+// From SQL files, e.g. what `drizzle-kit generate` writes (0000_init.sql, …), read from a
+// folder or from server assets. Files not ending in .sql are left out.
+const migrations = migrationsFromFiles(files) // [{ name, sql }] → [{ version, name, sql }]
+await migrateApp(backend.db, migrations, { adoptDrizzle: true })
+```
+
+- Migrations are `{ version, name, sql }`, numbered 1, 2, 3…, with lower-case snake_case
+  names. `migrationsFromFiles` sorts the files by name and numbers them from 1.
+- The new ones run in **one transaction**, under an advisory lock, so two copies of the app
+  starting together wait for each other. A migration waits at most 5 s for a table lock, then
+  fails, rather than hold every request behind it. A failure rolls back the whole run and
+  names the migration.
+- Applied migrations are recorded in `public.app_migrations` (version, name, time).
+- It **stops** when a migration is missing below the newest applied one (one added out of
+  order), when an applied version now has another name (a file put in the middle), or when the
+  database has a version the app doesn't know (an older image against a newer database). New
+  migrations go at the end.
+- **`adoptDrizzle: true`** takes over from Drizzle's migrator, once. When `app_migrations` is
+  empty and `drizzle.__drizzle_migrations` has N rows, the first N migrations count as applied,
+  as long as each file's SHA-256 is the hash Drizzle stored. Drizzle's table is then left as it
+  is.
+- **Migrations only add.** During a release the old and the new version run against the same
+  database for a few seconds ([ADR 0028](../../docs/decisions/0028-zero-downtime-deploys.md)).
 
 ## Provisioning
 

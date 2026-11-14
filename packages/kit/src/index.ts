@@ -3,9 +3,11 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous } from 'better-auth/plugins'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
+import { clientAddress, network } from './client.ts'
 import { authSchemaVersion } from './provision.ts'
 import { AUTH_SCHEMA_VERSION, accounts, sessions, users, verifications } from './schema.ts'
 
+export { clientAddress, isGuestLimitError, network } from './client.ts'
 export { accounts, sessions, users, verifications } from './schema.ts'
 
 /**
@@ -52,11 +54,20 @@ export interface Backend {
    * The visitor's guest, created if they have none: use it when the visitor saves something
    * (form posts and other writes). Send `headers` with the response: they set the session
    * cookie. New guests are limited per client address (`GuestLimitError`).
+   *
+   * The address is `client.clientAddress` if given, else the last X-Forwarded-For entry,
+   * which Spotcraft's Caddy sets (`clientAddress()`). An IPv6 address counts as its /64.
    */
   guest(
     request: Request,
-    client: { clientAddress: string },
+    client?: { clientAddress?: string },
   ): Promise<{ guest: Guest; headers: Headers }>
+  /**
+   * Connects and checks that the `auth` schema is new enough for this kit, throwing an error
+   * that names the problem. Call it when the server starts, so a wrong database stops the
+   * deploy instead of the first save.
+   */
+  check(): Promise<void>
   /** Closes the database connections (on shutdown). */
   close(): Promise<void>
 }
@@ -113,7 +124,12 @@ export function createBackend(options: BackendOptions): Backend {
   let ready: Promise<void> | undefined
   const checkSchema = () => {
     ready ??= (async () => {
-      const client = await pool.connect()
+      const client = await pool.connect().catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(`Can't connect to the app's database (DATABASE_URL): ${reason}`, {
+          cause: error,
+        })
+      })
       try {
         const version = await authSchemaVersion(client)
         if (version < AUTH_SCHEMA_VERSION) {
@@ -144,10 +160,10 @@ export function createBackend(options: BackendOptions): Backend {
   return {
     db,
     currentGuest: readGuest,
-    async guest(request, { clientAddress }) {
+    async guest(request, client) {
       const current = await readGuest(request)
       if (current.guest) return { guest: current.guest, headers: current.headers }
-      limit(clientAddress)
+      limit(client?.clientAddress ? network(client.clientAddress) : clientAddress(request))
       const created = await auth.api.signInAnonymous({
         headers: request.headers,
         returnHeaders: true,
@@ -155,6 +171,7 @@ export function createBackend(options: BackendOptions): Backend {
       const { id, createdAt } = created.response.user
       return { guest: { id, createdAt: new Date(createdAt) }, headers: created.headers }
     },
+    check: checkSchema,
     close: () => pool.end(),
   }
 }
