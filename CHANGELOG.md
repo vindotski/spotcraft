@@ -12,6 +12,16 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Added
 
+- **A deploy hook, so an app's CI can deploy every build**
+  ([ADR 0029](docs/decisions/0029-deploy-hook.md), guide:
+  [Deploy from CI](docs/guides/deploy-from-ci.md)):
+  - Turn it on in the app's page in the dashboard and save the token, shown once, in the app's
+    repository.
+  - CI POSTs the new tag to `/hooks/deploy/<name>` and polls until it is live.
+  - Only the tag changes; the image, env and limits stay as set in the dashboard.
+  - **Upgrading with Cloudflare Access:** run `tofu apply` in `infra/cloudflare`. It adds an Access
+    application that lets `<dashboard>/hooks/deploy` through without a sign-in.
+
 - **Default security headers for apps.** Caddy sends `X-Frame-Options: DENY`, a
   `Permissions-Policy` that turns off camera, microphone, geolocation, payment and USB, and
   `Cross-Origin-Opener-Policy: same-origin`, but only when the app doesn't send its own. The

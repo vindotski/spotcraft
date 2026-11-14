@@ -19,6 +19,32 @@
   const stateLabel = { active: 'Active', pending: 'Pending', missing: 'Missing', unknown: 'Not checked' }
   const modeLabel = { zone: 'DNS by Spotcraft', saas: 'Cloudflare custom hostname', manual: 'DNS set by hand' }
   let purge = $state(false)
+
+  // A GitHub Actions step for the app's workflow, after its image is pushed (ADR 0029).
+  const hookStep = $derived(`- name: Deploy to Spotcraft
+  timeout-minutes: 20
+  env:
+    URL: ${data.hook.url}
+    TOKEN: \${{ secrets.SPOTCRAFT_DEPLOY_TOKEN }}
+    # A pull may take 5 minutes and the health check 2, after other apps' deploys.
+    WAIT_MINUTES: 15
+  run: |
+    TAG="sha-\${GITHUB_SHA::7}"
+    auth="Authorization: Bearer $TOKEN"
+    curl -fsS --retry 5 --retry-all-errors -X POST "$URL" -H "$auth" \\
+      -H 'content-type: application/json' -d "{\\"tag\\":\\"$TAG\\"}"
+    deadline=$((SECONDS + WAIT_MINUTES * 60))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      sleep 5
+      # A failed poll (Spotcraft restarting, a network blip) is tried again.
+      result=$(curl -fsS "$URL" -H "$auth") || continue
+      case $(echo "$result" | jq -r '.state + " " + .tag') in
+        "live $TAG") exit 0 ;;
+        live*) echo "Another tag is live: $result"; exit 1 ;;
+        failed*) echo "$result"; exit 1 ;;
+      esac
+    done
+    echo "Not live after $WAIT_MINUTES minutes"; exit 1`)
 </script>
 
 <svelte:head><title>{app.name} · Spotcraft</title></svelte:head>
@@ -130,6 +156,43 @@
     </dl>
   </div>
 </div>
+
+{#if data.hook.enabled !== undefined}
+  {@const token = form && 'hookToken' in form ? form.hookToken : undefined}
+  {@const enabled = token ? true : form && 'hookDeleted' in form ? false : data.hook.enabled}
+  <section class="mt-8">
+    <h2 class="mb-2 font-heading text-lg font-semibold">Deploy hook</h2>
+    <div class="space-y-3 border p-4 text-sm">
+      <p class="text-muted-foreground">
+        Lets the app's CI deploy a new image tag, with no sign-in. Only the tag changes: the image, environment and limits stay as set here.
+        {enabled ? 'On.' : 'Off.'}
+      </p>
+      {#if token}
+        <Alert>
+          <AlertTitle>Your new token, shown only once</AlertTitle>
+          <AlertDescription>
+            <p>Save it as the secret <span class="font-mono">SPOTCRAFT_DEPLOY_TOKEN</span> in the app's repository. Any older token no longer works.</p>
+            <pre class="mt-2 overflow-x-auto border bg-muted p-2 font-mono text-xs select-all">{token}</pre>
+          </AlertDescription>
+        </Alert>
+      {/if}
+      <div class="flex flex-wrap gap-2">
+        <form method="POST" action="?/createHook" use:enhance>
+          <Button type="submit" variant="outline">{enabled ? 'New token' : 'Turn on'}</Button>
+        </form>
+        {#if enabled}
+          <form method="POST" action="?/deleteHook" use:enhance>
+            <Button type="submit" variant="outline">Turn off</Button>
+          </form>
+        {/if}
+      </div>
+      {#if enabled}
+        <p class="text-muted-foreground">A step for the app's GitHub Actions workflow, after it pushes the image. It deploys the commit's <span class="font-mono">sha-…</span> tag and waits until it is live:</p>
+        <pre class="overflow-x-auto border bg-muted p-3 text-xs leading-relaxed">{hookStep}</pre>
+      {/if}
+    </div>
+  </section>
+{/if}
 
 {#await data.domain then domain}
 {#if domain && domain.hosts.length > 0}

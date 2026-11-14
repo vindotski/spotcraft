@@ -4,16 +4,17 @@ OpenTofu module that puts Spotcraft behind Cloudflare (ADR 0021). It needs zones
 already in your Cloudflare account. It looks them up and never creates or deletes them, so
 records you made by hand stay.
 
-| Resource                                     | What                                                                          |
-| -------------------------------------------- | ----------------------------------------------------------------------------- |
-| tunnel `spotcraft-apps`                      | managed here; every request goes to the server's Caddy (ADR 0026)             |
-| `*.<apps_domain>` (proxied CNAME)            | every app's default host, through the tunnel                                  |
-| `<dashboard_domain>` (proxied CNAME)         | the dashboard, through the same tunnel                                        |
-| `fallback.<apps_domain>` + fallback origin   | with `custom_hostnames`: Cloudflare for SaaS for domains outside it           |
-| zone settings                                | SSL Full (strict), Always Use HTTPS, TLS 1.2+, HTTP/3, Rocket Loader off      |
-| bot management                               | Bot Fight Mode and "Block AI bots", both off by default                       |
-| rate limit (dashboard zone)                  | `/login`: `login_rate_limit` requests per 10 s per visitor, then 10 s blocked |
-| Access policy `spotcraft-owners` + dashboard | with `access_emails`: a one-time code by email before the dashboard           |
+| Resource                                         | What                                                                          |
+| ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| tunnel `spotcraft-apps`                          | managed here; every request goes to the server's Caddy (ADR 0026)             |
+| `*.<apps_domain>` (proxied CNAME)                | every app's default host, through the tunnel                                  |
+| `<dashboard_domain>` (proxied CNAME)             | the dashboard, through the same tunnel                                        |
+| `fallback.<apps_domain>` + fallback origin       | with `custom_hostnames`: Cloudflare for SaaS for domains outside it           |
+| zone settings                                    | SSL Full (strict), Always Use HTTPS, TLS 1.2+, HTTP/3, Rocket Loader off      |
+| bot management                                   | Bot Fight Mode and "Block AI bots", both off by default                       |
+| rate limit (dashboard zone)                      | `/login`: `login_rate_limit` requests per 10 s per visitor, then 10 s blocked |
+| Access policy `spotcraft-owners` + dashboard     | with `access_emails`: a one-time code by email before the dashboard           |
+| Access bypass, `<dashboard_domain>/hooks/deploy` | with `access_emails`: apps' CI reaches the deploy hook (ADR 0029)             |
 
 The zone settings and bot switches apply to the apps zone, the dashboard's zone and
 `extra_zones`. Cloudflare's free managed WAF rules are on by default on every zone; this
