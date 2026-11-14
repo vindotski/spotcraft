@@ -1,6 +1,6 @@
 {
   "name": "spotcraft",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Self-hosted deployment for a handful of web apps on one server: Docker images behind HTTPS, monitored, managed from one dashboard.",
   "private": true,
   "license": "Apache-2.0",
