@@ -76,7 +76,7 @@
     "prepack": "node -e \"const fs = require('node:fs'); if (!fs.existsSync('dist')) throw new Error('Build first: pnpm --recursive run build'); for (const f of ['LICENSE', 'NOTICE']) fs.copyFileSync('../../' + f, f)\""
   },
   "dependencies": {
-    "better-auth": "^1.7.21",
+    "better-auth": "^1.7.22",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1"
   },
@@ -92,7 +92,7 @@
     "@tanstack/react-start": "^1.169.5",
     "@types/node": "catalog:",
     "@types/pg": "^8.23.1",
-    "h3": "^1.15.11",
+    "h3": "^2.0.8",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "typescript": "catalog:"
