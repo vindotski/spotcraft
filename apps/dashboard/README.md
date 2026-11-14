@@ -6,16 +6,16 @@ VictoriaMetrics. It has no database: the agent's files are the app list.
 
 ## Screens
 
-| Path                  | What                                                                                                                         |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `/login`              | password login (5 failures per client in 15 minutes lock it out; IPv6 counts per /64)                                        |
-| `/`                   | apps: status, address, image:tag, 24-hour uptime                                                                             |
-| `/apps/new`           | add an app: name, image, tag (Docker Hub suggestions), custom domain, port, limits, env, database, sign-in                   |
-| `/apps/:name`         | status, reachability, uptime, CPU, memory, response time, settings, deploy hook, domain status, logs; Edit, Redeploy, Remove |
-| `/apps/:name/users`   | an app's users (guests and registered), newest first; delete one with a confirmation                                         |
-| `/apps/:name/edit`    | change settings and deploy                                                                                                   |
-| `/server`             | the server's CPU, memory, disk, load, uptime                                                                                 |
-| `/hooks/deploy/:name` | the deploy hook for the app's CI, no sign-in: POST a tag, GET how it went ([guide](../../docs/guides/deploy-from-ci.md))     |
+| Path                  | What                                                                                                                                                |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/login`              | password login (5 failures per client in 15 minutes lock it out; IPv6 counts per /64)                                                               |
+| `/`                   | apps: status, address, image:tag, backup state (with backups), 24-hour uptime                                                                       |
+| `/apps/new`           | add an app: name, image, tag (Docker Hub suggestions), custom domain, port, limits, env, database, sign-in                                          |
+| `/apps/:name`         | status, reachability, uptime, CPU, memory, response time, settings, backups (Back up now), deploy hook, domain status, logs; Edit, Redeploy, Remove |
+| `/apps/:name/users`   | an app's users (guests and registered), newest first; delete one with a confirmation                                                                |
+| `/apps/:name/edit`    | change settings and deploy                                                                                                                          |
+| `/server`             | the server's CPU, memory, disk, load, uptime                                                                                                        |
+| `/hooks/deploy/:name` | the deploy hook for the app's CI, no sign-in: POST a tag, GET how it went ([guide](../../docs/guides/deploy-from-ci.md))                            |
 
 **Database** gives the app its own Postgres database on the server, as `DATABASE_URL`
 ([ADR 0015](../../docs/decisions/0015-shared-postgres.md)). The form refuses an own

@@ -86,6 +86,14 @@ in that app's `secrets.json` (mode 600). The app receives it in `DATABASE_URL`, 
 its Compose file (also mode 600) next to its other environment variables. The agent connects to
 app databases with a fixed `search_path`, so schemas an app creates can't shadow what its
 queries use. The agent's API never returns it.
+**Backups** ([ADR 0030](decisions/0030-backups.md)) copy every app's env, database password and
+database dump to a private bucket each night. The agent's key for it, in `.env`, reaches only that
+bucket, where it can read and add objects. Whoever can read the bucket can read the apps' data and
+secrets, so the key is kept only on the server. With the R2 bucket from `infra/cloudflare`, a
+bucket lock keeps backups from being deleted or overwritten, even with that key, until shortly
+before R2 deletes them after 30 days; another store needs its own rules. An app's dump is
+restored as the app's own role, and `auth` as the agent's, never as the superuser: a dump can
+hold functions that run during the restore with the restoring role's rights.
 The agent's optional Cloudflare token can edit DNS in the account's zones, custom hostnames on
 the apps zone and Access applications. The agent changes only records it marked as its own
 (`spotcraft:<name>`), unless told to take a host over.

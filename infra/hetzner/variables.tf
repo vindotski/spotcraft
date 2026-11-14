@@ -5,9 +5,9 @@ variable "apps_server_type" {
 }
 
 variable "apps_server_backups" {
-  description = "Hetzner's daily backups of the server (7 kept, +20% of its price). It holds the app list (/opt/spotcraft/apps) and the app databases."
+  description = "Hetzner's daily backups of the whole server (7 kept, +20% of its price): the app list (/opt/spotcraft/apps), the app databases, Caddy's data and .env. The agent's nightly dumps (ADR 0030) are the copy outside Hetzner."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "deploy_ssh_public_key" {

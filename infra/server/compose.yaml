@@ -119,6 +119,13 @@ services:
       CLOUDFLARE_TUNNEL_ID: ${CLOUDFLARE_TUNNEL_ID:-}
       # Optional: lets apps be put behind Cloudflare Access with the owners' policy.
       CLOUDFLARE_ACCESS_POLICY_ID: ${CLOUDFLARE_ACCESS_POLICY_ID:-}
+      # Optional, all four together: nightly backups of app databases and settings to an
+      # S3-compatible bucket, such as R2 (ADR 0030). The dumps run in this container.
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-}
+      BACKUP_ACCESS_KEY_ID: ${BACKUP_ACCESS_KEY_ID:-}
+      BACKUP_SECRET_ACCESS_KEY: ${BACKUP_SECRET_ACCESS_KEY:-}
+      POSTGRES_CONTAINER: spotcraft-apps-postgres-1
       # Its own Postgres role, to create a database and role per app (ADR 0015).
       POSTGRES_URL: postgres://spotcraft_agent:${POSTGRES_AGENT_PASSWORD:?set POSTGRES_AGENT_PASSWORD in .env}@postgres:5432/postgres
     # Reaches Docker through the socket's group instead of running as root.

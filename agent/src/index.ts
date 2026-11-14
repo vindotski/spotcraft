@@ -1,11 +1,13 @@
 import { AccessApps } from './access.ts'
 import { buildApp } from './app.ts'
 import { Apps } from './apps.ts'
+import { dockerDump, untilNext } from './backups.ts'
 import { CloudflareApi } from './cloudflare.ts'
 import { loadConfig } from './config.ts'
 import { postgresDatabases } from './databases.ts'
 import { Domains } from './domains.ts'
 import { execRunner } from './runner.ts'
+import { S3 } from './s3.ts'
 import { Store } from './store.ts'
 
 const config = loadConfig()
@@ -26,6 +28,10 @@ const apps = new Apps(
   databases,
   { appsDomain: config.appsDomain, dashboardDomain: config.dashboardDomain, edge: config.edge },
   cloudflare,
+  config.backup && {
+    target: new S3(config.backup),
+    dump: dockerDump(config.backup.postgresContainer),
+  },
 )
 const app = buildApp({
   token: config.token,
@@ -84,4 +90,24 @@ if (databases) {
     app.log.warn({ failed, attempt }, 'app databases not up to date yet; retrying')
     await new Promise((resolve) => setTimeout(resolve, 5000))
   }
+}
+
+// Every night at 03:00 UTC, back up every app (ADR 0030). Each app's result is kept in its
+// backup.json, which the dashboard shows; failures are also logged.
+const BACKUP_HOUR_UTC = 3
+if (config.backup) {
+  const nightly = async () => {
+    try {
+      const results = await apps.backupAll()
+      const failed = Object.entries(results).filter(([, status]) => !status.ok)
+      if (failed.length > 0)
+        app.log.error({ failed: failed.map(([name]) => name) }, 'backups failed')
+      else app.log.info({ apps: Object.keys(results) }, 'backups done')
+    } catch (error) {
+      app.log.error({ err: error }, 'backups could not run')
+    }
+    setTimeout(nightly, untilNext(BACKUP_HOUR_UTC)).unref()
+  }
+  setTimeout(nightly, untilNext(BACKUP_HOUR_UTC)).unref()
+  app.log.info({ bucket: config.backup.bucket }, 'nightly backups at 03:00 UTC')
 }

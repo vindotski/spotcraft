@@ -221,6 +221,29 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
     },
   )
 
+  // Backups (ADR 0030): every app's last one, one app's, and a backup now.
+  app.get('/backups', async () => {
+    const result: Record<string, unknown> = {}
+    for (const { name } of await apps.list()) result[name] = (await apps.backupStatus(name)) ?? null
+    return { enabled: Boolean(apps.settings.backups), apps: result }
+  })
+
+  app.get<{ Params: NameParams }>(
+    '/apps/:name/backup',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) => {
+      if (!(await apps.get(request.params.name)))
+        return reply.code(404).send({ error: 'No such app' })
+      return (await apps.backupStatus(request.params.name)) ?? null
+    },
+  )
+
+  app.post<{ Params: NameParams }>(
+    '/apps/:name/backup',
+    { schema: { params: nameParamsSchema } },
+    async (request) => apps.backup(request.params.name),
+  )
+
   // The app's deploy hook (ADR 0029). The dashboard manages its token: a new one is returned
   // once, and only its hash is kept.
   app.get<{ Params: NameParams }>(

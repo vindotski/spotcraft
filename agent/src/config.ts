@@ -31,6 +31,17 @@ export interface Config {
         accessPolicyId: string | undefined
       }
     | undefined
+  /** Set together: apps are backed up every night to this bucket (ADR 0030). */
+  backup:
+    | {
+        endpoint: string
+        bucket: string
+        accessKeyId: string
+        secretAccessKey: string
+        /** The Postgres container, where `pg_dump` runs. */
+        postgresContainer: string
+      }
+    | undefined
   /** Settings that are present but have no effect, worth a line in the log at startup. */
   notices: string[]
 }
@@ -68,6 +79,38 @@ function loadCloudflare(
     throw new Error("CLOUDFLARE_ACCESS_POLICY_ID must be the policy's UUID")
   }
   return { ...values, accessPolicyId }
+}
+
+function loadBackup(env: NodeJS.ProcessEnv): Config['backup'] {
+  const values = {
+    endpoint: env.BACKUP_S3_ENDPOINT?.trim() ?? '',
+    bucket: env.BACKUP_BUCKET?.trim() ?? '',
+    accessKeyId: env.BACKUP_ACCESS_KEY_ID?.trim() ?? '',
+    secretAccessKey: env.BACKUP_SECRET_ACCESS_KEY?.trim() ?? '',
+  }
+  const set = Object.values(values).filter(Boolean).length
+  if (set === 0) return undefined
+  if (set < 4) {
+    throw new Error(
+      'Set all of BACKUP_S3_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID and BACKUP_SECRET_ACCESS_KEY, or none',
+    )
+  }
+  const url = URL.canParse(values.endpoint) ? new URL(values.endpoint) : undefined
+  if (!url || url.protocol !== 'https:' || url.pathname !== '/' || url.search) {
+    throw new Error(
+      'BACKUP_S3_ENDPOINT must be an https:// origin, e.g. https://<account>.r2.cloudflarestorage.com',
+    )
+  }
+  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(values.bucket)) {
+    throw new Error(
+      'BACKUP_BUCKET must be a bucket name (lower-case letters, digits, dots, dashes)',
+    )
+  }
+  return {
+    ...values,
+    endpoint: url.origin,
+    postgresContainer: env.POSTGRES_CONTAINER?.trim() || 'spotcraft-apps-postgres-1',
+  }
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -109,6 +152,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dashboardDomain,
     edge,
     cloudflare: loadCloudflare(env, edge, appsDomain, notices),
+    backup: loadBackup(env),
     notices,
   }
 }

@@ -1,6 +1,7 @@
 import { access, chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AppSpec } from './app-spec.ts'
+import type { BackupStatus } from './backups.ts'
 
 /** Everything the server knows about one app; the files are the only record. */
 export interface AppFiles {
@@ -189,6 +190,35 @@ export class Store {
       mode: 0o600,
     })
     await chmod(this.#secretsPath(name), 0o600)
+  }
+
+  /** The files a backup keeps of the app, as they are on disk; undefined if one is missing. */
+  async backupFiles(name: string): Promise<{ spec: string; secrets: string } | undefined> {
+    const spec = await readFile(this.#specPath(name), 'utf8').catch(() => undefined)
+    if (spec === undefined) return undefined
+    const secrets = await readFile(this.#secretsPath(name), 'utf8').catch(() => '{}\n')
+    return { spec, secrets }
+  }
+
+  #backupStatusPath(name: string) {
+    return join(this.appDir(name), 'backup.json')
+  }
+
+  /** The app's last backup; undefined if there was none, or its file can't be read. */
+  async readBackupStatus(name: string): Promise<BackupStatus | undefined> {
+    try {
+      return JSON.parse(await readFile(this.#backupStatusPath(name), 'utf8')) as BackupStatus
+    } catch {
+      // Missing, or cut short: the next backup writes it afresh.
+      return undefined
+    }
+  }
+
+  /** Written next to it, then renamed: a reader never sees half a file. */
+  async writeBackupStatus(name: string, status: BackupStatus) {
+    const path = this.#backupStatusPath(name)
+    await writeFile(`${path}.next`, `${JSON.stringify(status, null, 2)}\n`)
+    await rename(`${path}.next`, path)
   }
 
   async remove(name: string) {
