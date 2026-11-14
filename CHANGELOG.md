@@ -12,6 +12,26 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ### Added
 
+- **Backups** ([ADR 0030](docs/decisions/0030-backups.md), guide:
+  [Backups and restoring](docs/guides/backups.md)):
+  - **Nightly, to a bucket.** Every night at 03:00 UTC, the agent backs up each app to an
+    S3-compatible bucket: a `pg_dump` of its database, and its `app.json` and `secrets.json`.
+  - **In the dashboard.** It shows each app's last backup, red when it failed or is over a day
+    old, and the app page has **Back up now**.
+  - **In `infra/cloudflare`,** `backup_bucket` makes an R2 bucket that deletes backups after
+    `backup_retention_days` (30). A bucket lock keeps them from being deleted or overwritten
+    before then, even with the agent's key.
+  - **Restoring** is a documented procedure that restores each part as the role that owns it,
+    never as the superuser alone, because an app's dump can hold code that runs during a
+    restore.
+  - **To turn it on:**
+    1. Set `backup_bucket` and run `tofu apply`. This needs R2 enabled and the module's token
+       to have Workers R2 Storage: Edit.
+    2. Add the `backup_settings` output as variables.
+    3. Make an R2 token for the bucket and add it as the secrets `BACKUP_ACCESS_KEY_ID` and
+       `BACKUP_SECRET_ACCESS_KEY`.
+    4. Deploy.
+
 - **A deploy hook, so an app's CI can deploy every build**
   ([ADR 0029](docs/decisions/0029-deploy-hook.md), guide:
   [Deploy from CI](docs/guides/deploy-from-ci.md)):
@@ -34,6 +54,10 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
     `Cross-Origin-Opener-Policy`, e.g. `same-origin-allow-popups`.
 
 ### Changed
+
+- **Hetzner's daily server backups are on by default** (`apps_server_backups = true` in
+  `infra/hetzner`, +20% of the server's price). `tofu apply` turns them on for a server where the
+  variable isn't set. Set it to `false` to keep them off.
 
 - **Deploys have no downtime.** The agent starts the new version in a second slot next to the
   live one, moves traffic once it is healthy, then stops the old one, which gets 30 seconds to

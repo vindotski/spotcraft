@@ -53,7 +53,7 @@ somewhere safe: without it, OpenTofu no longer knows it manages the server.
 | `apps_server_type`      | `cax21`        | server size                                      |
 | `ssh_source_ips`        | anywhere       | who may reach SSH (GitHub Actions needs it)      |
 | `protect_servers`       | `true`         | Hetzner delete and rebuild protection            |
-| `apps_server_backups`   | `false`        | daily Hetzner backups of the server (+20%)       |
+| `apps_server_backups`   | `true`         | daily Hetzner backups of the server (+20%)       |
 | `edge`                  | `direct`       | `cloudflare` closes 80/443 (`../cloudflare`)     |
 
 To remove everything: set `protect_servers = false`, `tofu apply`, then `tofu destroy`.

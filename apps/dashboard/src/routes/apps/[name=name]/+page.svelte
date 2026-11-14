@@ -2,10 +2,11 @@
   import { Alert, AlertDescription, AlertTitle } from '@spotcraft/ui/components/alert'
   import * as AlertDialog from '@spotcraft/ui/components/alert-dialog'
   import { Button, buttonVariants } from '@spotcraft/ui/components/button'
+  import { backupHealth } from '#lib/backup.ts'
   import Sparkline from '#lib/components/Sparkline.svelte'
   import Stat from '#lib/components/Stat.svelte'
   import StatusBadge from '#lib/components/StatusBadge.svelte'
-  import { bytes, milliseconds, percent, uptime } from '#lib/format.ts'
+  import { ago, bytes, dateTime, milliseconds, percent, uptime } from '#lib/format.ts'
   import { enhance } from '$app/forms'
   import type { PageProps } from './$types'
 
@@ -19,6 +20,7 @@
   const stateLabel = { active: 'Active', pending: 'Pending', missing: 'Missing', unknown: 'Not checked' }
   const modeLabel = { zone: 'DNS by Spotcraft', saas: 'Cloudflare custom hostname', manual: 'DNS set by hand' }
   let purge = $state(false)
+  let backingUp = $state(false)
 
   // A GitHub Actions step for the app's workflow, after its image is pushed (ADR 0029).
   const hookStep = $derived(`- name: Deploy to Spotcraft
@@ -156,6 +158,49 @@
     </dl>
   </div>
 </div>
+
+{#if data.backup}
+  {@const known = form && 'backedUp' in form ? form.backedUp : data.backup.last}
+  {@const last = known === 'unavailable' ? null : known}
+  {@const health = backupHealth(last)}
+  <section class="mt-8">
+    <h2 class="mb-2 font-heading text-lg font-semibold">Backups</h2>
+    <div class="space-y-3 border p-4 text-sm">
+      <p class="text-muted-foreground">
+        Every night at 03:00 UTC: {app.database ? 'a dump of its database and ' : ''}its settings, kept as long as the bucket keeps them (30 days by default).
+      </p>
+      {#if known === 'unavailable'}
+        <p class="text-destructive">The agent couldn't say how the last backup went. Check its log.</p>
+      {:else if health === 'none'}
+        <p>No backup yet.</p>
+      {:else if last}
+        <p class={health === 'ok' ? '' : 'text-destructive'}>
+          {#if last.ok}
+            Last backup {ago(last.at)} ({dateTime(last.at)}){#if app.database}, database {bytes(last.bytes ?? 0)}{/if}.
+            {#if health === 'overdue'}That is more than a day ago: check the agent's log.{/if}
+          {:else}
+            The last backup failed {ago(last.at)}: {last.error}.
+            {#if last.lastOkAt}The last one that worked was {ago(last.lastOkAt)}.{:else}None has worked yet.{/if}
+          {/if}
+        </p>
+      {/if}
+      {#if form && 'backupError' in form}<p class="text-destructive">{form.backupError}</p>{/if}
+      <form
+        method="POST"
+        action="?/backup"
+        use:enhance={() => {
+          backingUp = true
+          return async ({ update }) => {
+            await update()
+            backingUp = false
+          }
+        }}
+      >
+        <Button type="submit" variant="outline" disabled={backingUp}>{backingUp ? 'Backing up…' : 'Back up now'}</Button>
+      </form>
+    </div>
+  </section>
+{/if}
 
 {#if data.hook.enabled !== undefined}
   {@const token = form && 'hookToken' in form ? form.hookToken : undefined}

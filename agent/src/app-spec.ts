@@ -143,6 +143,8 @@ export interface AgentSettings {
   access?: boolean
   /** The dashboard's host, served by the same Caddy; no app may use it (ADR 0026). */
   dashboardDomain?: string
+  /** Apps are backed up every night to a bucket (ADR 0030). */
+  backups?: boolean
 }
 
 /** The custom-domain hosts the agent sets up: the domain, and `www.` for a root domain. */

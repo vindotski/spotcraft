@@ -50,6 +50,7 @@ describe('apps domain (ADR 0021)', () => {
       edge: 'direct',
       dns: false,
       access: false,
+      backups: false,
     })
   })
 
@@ -174,5 +175,34 @@ describe('config', () => {
   it('rejects a bad APPS_DOMAIN or EDGE', () => {
     assert.throws(() => loadConfig({ ...base, APPS_DOMAIN: 'https://x.dev' }))
     assert.throws(() => loadConfig({ ...base, EDGE: 'nginx' }))
+  })
+  it('reads the four BACKUP_* settings together, or none', () => {
+    assert.equal(loadConfig(base).backup, undefined)
+    const backup = {
+      BACKUP_S3_ENDPOINT: 'https://acct.r2.cloudflarestorage.com/',
+      BACKUP_BUCKET: 'spotcraft-backups',
+      BACKUP_ACCESS_KEY_ID: 'key',
+      BACKUP_SECRET_ACCESS_KEY: 'secret',
+    }
+    assert.deepEqual(loadConfig({ ...base, ...backup }).backup, {
+      endpoint: 'https://acct.r2.cloudflarestorage.com',
+      bucket: 'spotcraft-backups',
+      accessKeyId: 'key',
+      secretAccessKey: 'secret',
+      postgresContainer: 'spotcraft-apps-postgres-1',
+    })
+    assert.throws(() => loadConfig({ ...base, ...backup, BACKUP_BUCKET: '' }), /all of/)
+    assert.throws(
+      () => loadConfig({ ...base, ...backup, BACKUP_S3_ENDPOINT: 'http://x.dev' }),
+      /https/,
+    )
+    assert.throws(
+      () => loadConfig({ ...base, ...backup, BACKUP_S3_ENDPOINT: 'https://x.dev/b' }),
+      /origin/,
+    )
+    assert.throws(
+      () => loadConfig({ ...base, ...backup, BACKUP_BUCKET: 'Bad_Bucket' }),
+      /bucket name/,
+    )
   })
 })

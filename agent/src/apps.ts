@@ -11,11 +11,14 @@ import {
   servedHosts,
   slotService,
 } from './app-spec.ts'
+import { type BackupStatus, type BackupTarget, backupStamp, type Dump } from './backups.ts'
 import { CloudflareError } from './cloudflare.ts'
 import { DomainConflict, type Domains } from './domains.ts'
 import type { Runner, RunResult } from './runner.ts'
 import type { AppFiles, Store } from './store.ts'
 import { composeService, renderCompose, renderSite } from './templates.ts'
+
+export type { BackupStatus }
 
 export class AgentError extends Error {
   readonly statusCode: number
@@ -138,6 +141,9 @@ export class Apps {
   readonly settings: AgentSettings
   readonly #domains: Domains | undefined
   readonly #access: AccessApps | undefined
+  readonly #backups: { target: BackupTarget; dump: Dump; now: () => Date } | undefined
+  /** Apps with a backup on request waiting or running. */
+  readonly #backingUp = new Set<string>()
   #queue: Promise<unknown> = Promise.resolve()
   /** The last release through each app's deploy hook, with a number to tell releases apart. */
   readonly #releases = new Map<string, ReleaseState & { id: number }>()
@@ -161,6 +167,8 @@ export class Apps {
      * protected apps are put behind Cloudflare Access (ADR 0021).
      */
     cloudflare?: { domains: Domains; access?: AccessApps },
+    /** With it, apps are backed up to a bucket (ADR 0030): `backupAll`, nightly. */
+    backups?: { target: BackupTarget; dump: Dump; now?: () => Date },
   ) {
     this.#store = store
     this.#run = run
@@ -170,7 +178,9 @@ export class Apps {
       ...settings,
       dns: Boolean(cloudflare?.domains),
       access: Boolean(cloudflare?.access),
+      backups: Boolean(backups),
     }
+    this.#backups = backups && { now: () => new Date(), ...backups }
     this.#domains = cloudflare?.domains
     this.#access = cloudflare?.access
   }
@@ -727,6 +737,84 @@ export class Apps {
       }
       return result
     })
+  }
+
+  /** The last backup of the app; undefined if there was none. */
+  backupStatus(name: string): Promise<BackupStatus | undefined> {
+    return this.#store.readBackupStatus(name)
+  }
+
+  /**
+   * Backs the app up now, in the queue (so never during one of its deploys). One at a time per
+   * app: while one waits or runs, asking again is refused.
+   */
+  async backup(name: string): Promise<BackupStatus> {
+    if (!this.#backups) throw new AgentError('Backups are not set up on this server', 409)
+    if (this.#backingUp.has(name))
+      throw new AgentError(`A backup of ${name} is already queued`, 409)
+    this.#backingUp.add(name)
+    try {
+      return await this.#exclusive(async () => {
+        if (!(await this.#store.get(name))) throw new AgentError('No such app', 404)
+        return this.#backup(name)
+      })
+    } finally {
+      this.#backingUp.delete(name)
+    }
+  }
+
+  /**
+   * Backs up every app, one at a time, each in its own turn in the queue so deploys can go
+   * between them. A failed app doesn't stop the others; its status says why.
+   */
+  async backupAll(): Promise<Record<string, BackupStatus>> {
+    const result: Record<string, BackupStatus> = {}
+    if (!this.#backups) return result
+    for (const spec of await this.#store.list()) {
+      const status = await this.#exclusive(async () =>
+        (await this.#store.get(spec.name)) ? this.#backup(spec.name) : undefined,
+      )
+      if (status) result[spec.name] = status
+    }
+    return result
+  }
+
+  /**
+   * One backup, under `<name>/<time>/` in the bucket: `database.dump` (if the app has a
+   * database), then `app.json` and `secrets.json`. Without AUTH_SECRET and the like from these,
+   * a restored database would sign every guest out. Writes the status, failed or not.
+   */
+  async #backup(name: string): Promise<BackupStatus> {
+    const backups = this.#backups
+    if (!backups) throw new AgentError('Backups are not set up on this server', 409)
+    const previous = await this.#store.readBackupStatus(name)
+    const key = `${name}/${backupStamp(backups.now())}/`
+    let status: BackupStatus
+    try {
+      const spec = await this.#store.get(name)
+      const files = await this.#store.backupFiles(name)
+      if (!spec || !files) throw new Error(`${name} has no settings on disk`)
+      let bytes = 0
+      if (spec.database) {
+        const dump = await backups.dump(name)
+        bytes = dump.length
+        await backups.target.put(`${key}database.dump`, dump)
+      }
+      await backups.target.put(`${key}app.json`, Buffer.from(files.spec), 'application/json')
+      await backups.target.put(`${key}secrets.json`, Buffer.from(files.secrets), 'application/json')
+      const at = backups.now().toISOString()
+      status = { at, ok: true, key, bytes, lastOkAt: at }
+    } catch (error) {
+      status = {
+        at: backups.now().toISOString(),
+        ok: false,
+        error: message(error),
+        ...(previous?.lastOkAt ? { lastOkAt: previous.lastOkAt } : {}),
+      }
+      console.warn(`backup of ${name} failed: ${status.error}`)
+    }
+    await this.#store.writeBackupStatus(name, status)
+    return status
   }
 
   /** The app's database interface, or why its users can't be shown (404 or 409). */

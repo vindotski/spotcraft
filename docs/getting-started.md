@@ -96,11 +96,16 @@ Optional settings, all in the same environment:
 | variable | `CLOUDFLARE_ACCESS_POLICY_ID` | from the `agent_settings` output, if you use Access           |
 | variable | `CF_ACCESS_TEAM_DOMAIN`       | `<team>.cloudflareaccess.com`, if Access guards the dashboard |
 | variable | `CF_ACCESS_AUD`               | from the `dashboard_settings` output, with the one above      |
+| variable | `BACKUP_S3_ENDPOINT`          | from the `backup_settings` output                             |
+| variable | `BACKUP_BUCKET`               | from the `backup_settings` output                             |
+| secret   | `BACKUP_ACCESS_KEY_ID`        | the R2 token for the bucket ([Backups](guides/backups.md))    |
+| secret   | `BACKUP_SECRET_ACCESS_KEY`    | its secret                                                    |
 
 With the four `CLOUDFLARE_*` agent settings, Spotcraft sets up each app's custom domain itself.
 With both `CF_ACCESS_*` variables, signing in at Cloudflare Access is enough to open the
 dashboard; the password stays as the way in without Access.
 With the Access policy as well, any app can be put behind a sign-in.
+With the four `BACKUP_*` settings, every app is backed up each night to the bucket.
 
 ## 6. Deploy Spotcraft
 

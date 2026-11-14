@@ -78,3 +78,15 @@ variable "route_dns" {
   type        = bool
   default     = true
 }
+
+variable "backup_bucket" {
+  description = "R2 bucket for the agent's nightly backups of app databases and settings (ADR 0030), e.g. spotcraft-backups. Empty: no bucket. R2 must be enabled on the account."
+  type        = string
+  default     = ""
+}
+
+variable "backup_retention_days" {
+  description = "Days R2 keeps a backup before deleting it."
+  type        = number
+  default     = 30
+}

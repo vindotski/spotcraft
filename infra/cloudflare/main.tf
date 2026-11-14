@@ -177,3 +177,49 @@ resource "cloudflare_zero_trust_access_application" "deploy_hook" {
     precedence = 1
   }]
 }
+
+# --- Backups -----------------------------------------------------------------------------------
+# The agent's nightly backups (ADR 0030) go to this bucket; R2 deletes them after
+# backup_retention_days. The agent's access key is made by hand (README): an R2 token scoped to
+# this bucket, with Object Read & Write.
+resource "cloudflare_r2_bucket" "backups" {
+  count = var.backup_bucket != "" ? 1 : 0
+
+  account_id = var.account_id
+  name       = var.backup_bucket
+}
+
+resource "cloudflare_r2_bucket_lifecycle" "backups" {
+  count = var.backup_bucket != "" ? 1 : 0
+
+  account_id  = var.account_id
+  bucket_name = cloudflare_r2_bucket.backups[0].name
+  rules = [{
+    id         = "expire-backups"
+    enabled    = true
+    conditions = { prefix = "" }
+    delete_objects_transition = {
+      condition = {
+        type    = "Age"
+        max_age = var.backup_retention_days * 86400
+      }
+    }
+  }]
+}
+
+# Backups can't be deleted or overwritten for a day less than they're kept, not even with the
+# agent's key: a compromised server or a leaked key can't wipe them, or swap in a crafted dump.
+resource "cloudflare_r2_bucket_lock" "backups" {
+  count = var.backup_bucket != "" ? 1 : 0
+
+  account_id  = var.account_id
+  bucket_name = cloudflare_r2_bucket.backups[0].name
+  rules = [{
+    id      = "keep-backups"
+    enabled = true
+    condition = {
+      type            = "Age"
+      max_age_seconds = max(var.backup_retention_days - 1, 1) * 86400
+    }
+  }]
+}

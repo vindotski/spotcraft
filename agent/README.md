@@ -33,6 +33,9 @@ The files it writes are the only record of which apps exist:
 | DELETE | `/apps/:name/hook-token` | turn the deploy hook off; 204                              |
 | POST   | `/apps/:name/release`    | `{ tag }` with `X-Hook-Token`: deploy that tag; 202        |
 | GET    | `/apps/:name/release`    | with `X-Hook-Token`: how the last release went             |
+| GET    | `/backups`               | `{ enabled, apps }`: every app's last backup, or null      |
+| GET    | `/apps/:name/backup`     | the app's last backup, or null                             |
+| POST   | `/apps/:name/backup`     | back it up now; the status (409 without backups)           |
 
 `PUT` body (unknown fields are rejected):
 
@@ -192,6 +195,36 @@ to `/apps/:name/release` ([ADR 0029](../docs/decisions/0029-deploy-hook.md), gui
   removed, or the dashboard deploys it. Without a record, `GET` answers `live` with the app's
   tag once startup recovery has finished, and 503 before. Without one since the agent started, `GET`
   answers `live` with the app's tag.
+
+## Backups
+
+With the four `BACKUP_*` settings, the agent backs up every app at 03:00 UTC to an
+S3-compatible bucket ([ADR 0030](../docs/decisions/0030-backups.md), guide:
+[Backups and restoring](../docs/guides/backups.md)). Each app gets a folder
+`<name>/<time>/` (`20261114T030000Z`) with:
+
+- `database.dump`, for an app with a database: `pg_dump --format=custom`, run with
+  `docker exec` in `POSTGRES_CONTAINER` as the superuser over its local socket, with
+  `--lock-wait-timeout=30s` and 5 minutes in all (`timeout` inside the container). It is held in
+  memory, up to 32 MB; a larger one fails with that reason.
+- `app.json` and `secrets.json`, as they are on disk.
+
+Each app's backup takes its own turn in the deploy queue, so deploys can go between them. Each
+upload has a minute. A backup on request is refused (409) while one for that app is waiting.
+The result goes into `apps/<name>/backup.json`, written to a temp file and renamed (a file that
+can't be read counts as no backup yet): `{ at, ok, key, bytes, lastOkAt }`, or `error` in place
+of `key` and `bytes`. A failure is also logged. Uploads are signed with AWS SigV4
+(`src/s3.ts`), path-style, with region `auto`.
+
+| Setting                    | What                                                       |
+| -------------------------- | ---------------------------------------------------------- |
+| `BACKUP_S3_ENDPOINT`       | `https://<account>.r2.cloudflarestorage.com`, an origin    |
+| `BACKUP_BUCKET`            | the bucket                                                 |
+| `BACKUP_ACCESS_KEY_ID`     | the key: object read and write on that bucket only         |
+| `BACKUP_SECRET_ACCESS_KEY` | its secret                                                 |
+| `POSTGRES_CONTAINER`       | where `pg_dump` runs (default `spotcraft-apps-postgres-1`) |
+
+All four `BACKUP_*` or none; the agent refuses to start with some.
 
 ## App databases
 

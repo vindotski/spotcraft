@@ -1,8 +1,16 @@
 import type { AgentSettings, AppBody, AppSpec, DomainStatus } from '@spotcraft/agent/app-spec'
-import type { AppStatus, ReleaseState, UserPage } from '@spotcraft/agent/apps'
+import type { AppStatus, BackupStatus, ReleaseState, UserPage } from '@spotcraft/agent/apps'
 import { AGENT_TOKEN, AGENT_URL } from '$app/env/private'
 
-export type { AgentSettings, AppSpec, AppStatus, DomainStatus, ReleaseState, UserPage }
+export type {
+  AgentSettings,
+  AppSpec,
+  AppStatus,
+  BackupStatus,
+  DomainStatus,
+  ReleaseState,
+  UserPage,
+}
 export type AppInput = AppBody
 
 export class AgentUnavailable extends Error {}
@@ -151,4 +159,22 @@ export async function relayRelease(
     | ReleaseState
     | { error: string }
   return { status: response.status, body }
+}
+
+/** Whether backups are set up, and every app's last backup (null: none yet). ADR 0030. */
+export async function getBackups(): Promise<{
+  enabled: boolean
+  apps: Record<string, BackupStatus | null>
+}> {
+  return expectJson(await call('/backups'))
+}
+
+/** The app's last backup; null if it never had one. */
+export async function getBackup(name: string): Promise<BackupStatus | null> {
+  return expectJson(await call(`${appPath(name)}/backup`))
+}
+
+/** Backs the app up now. It waits its turn behind deploys, so the timeout is generous. */
+export async function backupNow(name: string): Promise<BackupStatus> {
+  return expectJson(await call(`${appPath(name)}/backup`, { method: 'POST' }, 900_000))
 }
