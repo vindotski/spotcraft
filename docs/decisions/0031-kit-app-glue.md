@@ -2,11 +2,11 @@
 title: The kit holds the server glue every app repeated
 number: 31
 status: accepted
-implementation: skeleton
+implementation: done
 date: 2026-11-14
 supersedes: [16]
 superseded_by: []
-notes: "Built in kit 0.4.0: clientAddress and network, isGuestLimitError, backend.check(), and @spotcraft/kit/migrate (migrateApp, migrationsFromFiles, adoptDrizzle). The Nuxt and TanStack Start adapters come next, in the same kit release."
+notes: "Built in kit 0.4.0: clientAddress and network, isGuestLimitError, backend.check(), @spotcraft/kit/migrate (migrateApp, migrationsFromFiles, adoptDrizzle), prepare and healthResponse, and the Nuxt and TanStack Start adapters. Found while building: Nitro 2 doesn't wait for an async plugin before serving, so healthResponse waits for prepare; the Nuxt adapter imports nothing from h3 and answers the guest limit itself, since h3 logs a thrown error as unhandled."
 ---
 
 # The kit holds the server glue every app repeated
