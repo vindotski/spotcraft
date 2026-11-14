@@ -22,7 +22,7 @@ x-hardened: &hardened
 services:
   caddy:
     <<: *hardened
-    image: caddy:2.11.9@sha256:e40b94d0a43b5ff69cb20568d73f10c70703df7b0ffc2298eb3d723cdc9d0bd1
+    image: caddy:2.11.9@sha256:4e2425f6009577e7c651010f16679c28f7d12df3e7b1914f941a7a3370746b3c
     cap_add: [NET_BIND_SERVICE] # ports 80 and 443
     read_only: true
     tmpfs:
@@ -66,7 +66,7 @@ services:
   # Cloudflare Tunnel and hands every request to Caddy on port 80 (ADR 0021).
   cloudflared:
     <<: *hardened
-    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
+    image: cloudflare/cloudflared:2026.11.0@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344
     profiles: [cloudflare]
     command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:2000", "run"]
     read_only: true
@@ -156,7 +156,7 @@ services:
   # script). The superuser `postgres` only works over the local socket inside this container.
   postgres:
     <<: *hardened
-    image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+    image: postgres:18.7-trixie@sha256:9f4fd4aa918f52ae3d6f3b687f1de90d8f867cd4d520021545a9a50c120eae3b
     # The image's own user, so the entrypoint needs no root, chown or gosu.
     user: "999:999"
     read_only: true
