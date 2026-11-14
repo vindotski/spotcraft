@@ -82,12 +82,14 @@ generates their `uuid` ids.
 
 ## Exports
 
-| Export        | What                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------- |
-| `.`           | `createBackend`, `backendFromEnv`, the guest limit's error, client addresses, `auth` tables |
-| `./migrate`   | `migrateApp`, `migrationsFromFiles`: the app's own migrations                               |
-| `./schema`    | Drizzle definitions of the `auth` tables, the SQL migrations, the version                   |
-| `./provision` | `provision`, `purge`, `migrate`, `authSchemaVersion`, `appDatabaseName`                     |
+| Export             | What                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `.`                | `createBackend`, `backendFromEnv`, the guest limit's error, client addresses, `auth` tables |
+| `./migrate`        | `migrateApp`, `migrationsFromFiles`: the app's own migrations                               |
+| `./nuxt`           | `guestMiddleware`, `startup`, `prepare`, `healthResponse` for Nuxt 4                        |
+| `./tanstack-start` | `guestHelpers`, `startup`, `prepare`, `healthResponse` for TanStack Start                   |
+| `./schema`         | Drizzle definitions of the `auth` tables, the SQL migrations, the version                   |
+| `./provision`      | `provision`, `purge`, `migrate`, `authSchemaVersion`, `appDatabaseName`                     |
 
 ## The `auth` schema
 
@@ -116,6 +118,38 @@ CREATE TABLE notes (
   body    text NOT NULL
 );
 ```
+
+## Start and health
+
+`prepare(backend, { migrations, adoptDrizzle, after })` gets the database ready: `check()`,
+then the app's migrations, then its own `after` step. It runs once per backend; every caller
+waits for the same run, and a failure is tried again by the next caller.
+
+`healthResponse(backend)` is the answer to a health check: 200 `{"ok":true}` once the database
+answers, else 503, with the reason only in the log. It waits for a `prepare` under way and fails
+while the last one failed, so a deploy goes live only after the migrations ran.
+
+## Framework adapters
+
+The guest, the start check and the health route, wired for a framework. They are functions the
+app calls from its own files, because Nitro replaces `import.meta.dev` and
+`import.meta.prerender` only in the app's code.
+
+- **`@spotcraft/kit/nuxt`**, for Nuxt 4 (Nitro 2, h3 1). It imports nothing from Nuxt.
+  - `guestMiddleware(backend)` puts the guest on `event.context.guest`, creating one only on
+    writes, sends the cookie, skips assets and answers the guest limit with 429.
+  - Guide: [Guest accounts in Nuxt](https://github.com/vindotski/spotcraft/blob/main/docs/guides/kit-nuxt.md).
+- **`@spotcraft/kit/tanstack-start`**, for TanStack Start on React. It imports
+  `@tanstack/react-start/server`, an optional peer dependency.
+  - `guestHelpers(backend)` gives `currentGuestId()` and `guestId()` for server code, which
+    send the cookie and `Cache-Control: private, no-store`.
+  - Guide: [Guest accounts in TanStack Start](https://github.com/vindotski/spotcraft/blob/main/docs/guides/kit-tanstack-start.md).
+- Both have `startup(nitroApp, backend, options)` for a Nitro plugin: `prepare`, then exit the
+  process if it fails, so the deploy fails and the old version keeps serving. It closes the
+  connections when the server stops.
+
+The adapters are tested on the framework's own code: h3 1 for Nuxt, Start's request scope for
+TanStack Start.
 
 ## The app's migrations
 

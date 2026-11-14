@@ -25,11 +25,21 @@ version 1); works with every Spotcraft from 0.2.0.
 - `backend.check()` checks the database and its `auth` schema at once, for a check at start.
 - `isGuestLimitError(error)`, which works across bundles where `instanceof` fails.
 - `clientAddress(request, fallback)` and `network(address)`.
+- `prepare(backend, options)` checks the database, migrates and runs the app's own step, once
+  per backend. `healthResponse(backend)` answers a health check, and waits for `prepare`.
+- `@spotcraft/kit/nuxt` (Nuxt 4): `guestMiddleware`, `startup` for a Nitro plugin, and the
+  above. It imports nothing from Nuxt.
+- `@spotcraft/kit/tanstack-start`: `guestHelpers` (`currentGuestId`, `guestId`), `startup` and
+  the above. `@tanstack/react-start` is an optional peer dependency.
+- Guides for [Nuxt](../../docs/guides/kit-nuxt.md) and
+  [TanStack Start](../../docs/guides/kit-tanstack-start.md).
 
 ### Changed
 
 - `guest(request)` takes the client address from the last X-Forwarded-For entry, which
   Spotcraft's Caddy sets, when `clientAddress` isn't passed.
+- The backend logs a Postgres connection that breaks while idle, instead of crashing the
+  server on the pool's unhandled `error` event.
 - Every client address the guest limit counts, passed in or read, counts as its /64 when it is
   IPv6. One phone could make guests from many addresses before.
 

@@ -9,6 +9,7 @@ import { AUTH_SCHEMA_VERSION, accounts, sessions, users, verifications } from '.
 
 export { clientAddress, isGuestLimitError, network } from './client.ts'
 export { accounts, sessions, users, verifications } from './schema.ts'
+export { healthResponse, type PrepareOptions, prepare } from './start.ts'
 
 /**
  * The backend kit for server-rendered apps (ADR 0016). Server-only: the browser never talks
@@ -96,6 +97,9 @@ function guestLimiter({ max, windowMs }: { max: number; windowMs: number }) {
 
 export function createBackend(options: BackendOptions): Backend {
   const pool = new pg.Pool({ connectionString: options.databaseUrl, max: 10 })
+  // A pooled connection that breaks while idle (Postgres restarted, a network blip) is reported
+  // here; with no listener it would crash the server. The pool opens a new one when needed.
+  pool.on('error', (error) => console.error('Postgres connection lost:', error.message))
   const db = drizzle(pool)
   const auth = betterAuth({
     baseURL: options.baseURL,
