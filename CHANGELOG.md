@@ -10,6 +10,25 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-14
+
+Releases without downtime, a deploy hook for an app's CI, nightly backups of every app to R2
+with Hetzner's server backups on, and default security headers for apps. It ships kit 0.4.0,
+released first, with adapters for Nuxt and TanStack Start; apps upgrade the kit when they like.
+
+**Upgrading from 0.4:**
+
+1. **Rename any app whose name ends in `-blue` or `-green`** (breaking, see "Deploys have no
+   downtime" below).
+2. **Run `tofu apply` in `infra/cloudflare`.** With Cloudflare Access, it adds the bypass for
+   the deploy hook. With `backup_bucket` set, it makes the R2 bucket.
+3. **Run `tofu apply` in `infra/hetzner`.** It turns on the server's backups in place; check
+   that the plan doesn't replace the server.
+4. **For backups,** add the `BACKUP_*` variables and secrets (see "Backups" below). Without
+   them, the agent runs as before, with no backups.
+5. **Deploy `0.5.0`** with the Deploy workflow. Existing apps move into a slot on their next
+   deploy.
+
 ### Added
 
 - **Backups** ([ADR 0030](docs/decisions/0030-backups.md), guide:
@@ -310,7 +329,8 @@ handful of server-rendered apps from Docker Hub images behind HTTPS.
 - Servers: key-only SSH as a `deploy` user with modern algorithms only, root login refused,
   two firewalls, automatic security updates.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/vindotski/spotcraft/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/vindotski/spotcraft/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/vindotski/spotcraft/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
