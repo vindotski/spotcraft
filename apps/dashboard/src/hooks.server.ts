@@ -1,10 +1,12 @@
 import { redirect } from '@sveltejs/kit'
 import type { Handle } from '@sveltejs/kit/hooks'
 import { accessConfig, accessVerifier } from '#lib/server/access.ts'
+import { isHookPath } from '#lib/server/hook.ts'
 import { hasValidSession } from '#lib/server/session.ts'
 import { building } from '$app/env'
 import { CF_ACCESS_AUD, CF_ACCESS_TEAM_DOMAIN, SESSION_SECRET } from '$app/env/private'
 
+// The login page, and the deploy hook (isHookPath), which checks a token of its own.
 const PUBLIC_PATHS = new Set(['/login'])
 
 // Behind Cloudflare Access, its sign-in is enough; the password stays as the way in when Access
@@ -19,7 +21,11 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.authed =
     Boolean(event.locals.accessEmail) || hasValidSession(event.cookies, SESSION_SECRET)
 
-  if (!event.locals.authed && !PUBLIC_PATHS.has(event.url.pathname)) {
+  if (
+    !event.locals.authed &&
+    !PUBLIC_PATHS.has(event.url.pathname) &&
+    !isHookPath(event.url.pathname)
+  ) {
     if (event.url.pathname.startsWith('/api/')) {
       return new Response('Unauthorized', { status: 401 })
     }

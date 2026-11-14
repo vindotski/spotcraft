@@ -16,6 +16,8 @@
 #                             the dashboard password (ADR 0023)
 #   EDGE                      optional; cloudflare = behind a Cloudflare Tunnel (ADR 0021)
 #   CLOUDFLARE_TUNNEL_TOKEN   the server's tunnel token; required with EDGE=cloudflare
+#   BACKUP_S3_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY
+#                             optional, all four or none; nightly backups (ADR 0030)
 set -euo pipefail
 cd /opt/spotcraft
 
@@ -83,6 +85,15 @@ if { [ -n "$CF_ACCESS_TEAM_DOMAIN" ] && [ -z "$CF_ACCESS_AUD" ]; } ||
   echo "::error::Set both CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD, or neither" >&2
   exit 1
 fi
+optional BACKUP_S3_ENDPOINT BACKUP_BUCKET BACKUP_ACCESS_KEY_ID BACKUP_SECRET_ACCESS_KEY
+backup_set=0
+for name in BACKUP_S3_ENDPOINT BACKUP_BUCKET BACKUP_ACCESS_KEY_ID BACKUP_SECRET_ACCESS_KEY; do
+  [ -n "${!name}" ] && backup_set=$((backup_set + 1))
+done
+if [ "$backup_set" -ne 0 ] && [ "$backup_set" -ne 4 ]; then
+  echo "::error::Set all four BACKUP_* values, or none" >&2
+  exit 1
+fi
 DOCKER_GID="$(getent group docker | cut -d: -f3)"
 # Postgres needs a superuser password once, when its data directory is created; nobody uses
 # it afterwards (the superuser only works over the container's local socket). It is generated
@@ -110,6 +121,10 @@ CLOUDFLARE_TUNNEL_ID=$CLOUDFLARE_TUNNEL_ID
 CLOUDFLARE_ACCESS_POLICY_ID=$CLOUDFLARE_ACCESS_POLICY_ID
 CF_ACCESS_TEAM_DOMAIN=$CF_ACCESS_TEAM_DOMAIN
 CF_ACCESS_AUD=$CF_ACCESS_AUD
+BACKUP_S3_ENDPOINT=$BACKUP_S3_ENDPOINT
+BACKUP_BUCKET=$BACKUP_BUCKET
+BACKUP_ACCESS_KEY_ID=$BACKUP_ACCESS_KEY_ID
+BACKUP_SECRET_ACCESS_KEY=$BACKUP_SECRET_ACCESS_KEY
 ENV
 if [ "$EDGE" = cloudflare ]; then echo "DASHBOARD_SCHEME=http://" >> .env.new; fi
 if [ -n "$EDGE_ENV" ]; then printf '%s\n' "$EDGE_ENV" >> .env.new; fi

@@ -15,19 +15,27 @@ The files it writes are the only record of which apps exist:
 
 ## API
 
-| Method | Path                    | What                                                       |
-| ------ | ----------------------- | ---------------------------------------------------------- |
-| GET    | `/health`               | `{ ok: true }`, no token needed                            |
-| GET    | `/settings`             | `{ appsDomain?, edge, dns, access }`: what is set up       |
-| GET    | `/apps`                 | settings plus `state`, `health`, `status`, `hostnames`     |
-| GET    | `/apps/:name`           | one app, or 404                                            |
-| PUT    | `/apps/:name`           | create or update, then deploy; returns the app with status |
-| DELETE | `/apps/:name`           | stop and remove the app and its site; 204, or 404          |
-|        |                         | `?purge=true` also deletes its database and role           |
-| GET    | `/apps/:name/domain`    | custom domain status and records still to create           |
-| GET    | `/apps/:name/logs`      | last `?tail=` lines (default 200, max 5000), plain text    |
-| GET    | `/apps/:name/users`     | the app's users, newest first (`?limit=`, `?cursor=`)      |
-| DELETE | `/apps/:name/users/:id` | delete a user and what the app kept for them; 204, or 404  |
+| Method | Path                     | What                                                       |
+| ------ | ------------------------ | ---------------------------------------------------------- |
+| GET    | `/health`                | `{ ok: true }`, no token needed                            |
+| GET    | `/settings`              | `{ appsDomain?, edge, dns, access }`: what is set up       |
+| GET    | `/apps`                  | settings plus `state`, `health`, `status`, `hostnames`     |
+| GET    | `/apps/:name`            | one app, or 404                                            |
+| PUT    | `/apps/:name`            | create or update, then deploy; returns the app with status |
+| DELETE | `/apps/:name`            | stop and remove the app and its site; 204, or 404          |
+|        |                          | `?purge=true` also deletes its database and role           |
+| GET    | `/apps/:name/domain`     | custom domain status and records still to create           |
+| GET    | `/apps/:name/logs`       | last `?tail=` lines (default 200, max 5000), plain text    |
+| GET    | `/apps/:name/users`      | the app's users, newest first (`?limit=`, `?cursor=`)      |
+| DELETE | `/apps/:name/users/:id`  | delete a user and what the app kept for them; 204, or 404  |
+| GET    | `/apps/:name/hook-token` | `{ enabled }`: whether the app has a deploy hook           |
+| POST   | `/apps/:name/hook-token` | a new deploy hook token, returned once (201)               |
+| DELETE | `/apps/:name/hook-token` | turn the deploy hook off; 204                              |
+| POST   | `/apps/:name/release`    | `{ tag }` with `X-Hook-Token`: deploy that tag; 202        |
+| GET    | `/apps/:name/release`    | with `X-Hook-Token`: how the last release went             |
+| GET    | `/backups`               | `{ enabled, apps }`: every app's last backup, or null      |
+| GET    | `/apps/:name/backup`     | the app's last backup, or null                             |
+| POST   | `/apps/:name/backup`     | back it up now; the status (409 without backups)           |
 
 `PUT` body (unknown fields are rejected):
 
@@ -102,23 +110,121 @@ and only once Caddy runs the new sites does Access drop the old hosts. If
 Caddy rejects the rewrite, the previous sites are put back. An app left without any address
 (no `APPS_DOMAIN` and no domain of its own) gets no site until it has one.
 
-`PUT` writes the files, then runs `docker compose pull`, `docker compose up -d --wait`
-(waits up to 120 s for the container to run, and to be healthy if the image has a healthcheck)
-and reloads Caddy. If any step fails, the previous version's files are restored and started
-again (a new app is removed), and the response carries the error and the command output.
-Changes run one at a time.
+An app runs in one of two slots, `blue` and `green`: Compose services named `<name>-blue` and
+`<name>-green` in the app's project, `spotcraft-app-<name>`
+([ADR 0028](../docs/decisions/0028-zero-downtime-deploys.md)). Its compose file holds only the
+live slot. `PUT` deploys into the other slot, next to the live one:
+
+1. It stages the new spec and compose file as `app.next.json` and `compose.next.yaml`, next to
+   the live ones.
+2. It runs `docker compose pull`, then `docker compose up -d --wait` for the new slot's service
+   only (up to 120 s for the container to run, and to be healthy if the image has a
+   healthcheck). The live slot keeps serving.
+3. It points the app's Caddy site at the new slot and commits: renaming `compose.next.yaml` to
+   `compose.yaml` makes the new slot the live one. Then it reloads Caddy.
+4. It stops the old slot with `docker stop --time 30`, so it can finish the requests it has, and
+   removes it.
+
+If a step fails, the new slot and the staged files are removed. The live slot, its files and
+Caddy were never touched, so the app keeps serving its previous version (a new app is removed).
+The response carries the error and the command output. Changes run one at a time.
+
+When the agent starts, it recovers from a deploy it didn't finish. Files staged but not
+committed are dropped, and a commit cut short between its two renames is finished. Then the
+sites are rewritten for the live slots, Caddy reloads, and any container of a slot that isn't
+live is removed. It also makes the env- and password-bearing files of every app directory
+readable by the agent's user only, complete app or not.
+
+So a deploy has no downtime, but for a few seconds both versions run against the app's
+database: an app's migrations must only add. Its memory briefly doubles. An image without a
+healthcheck counts as ready once it runs, so give images one. An app deployed before slots has
+one service named after it; its next deploy moves it into `blue`. Names ending in `-blue` or
+`-green` are reserved, as are names starting with `app-`.
 
 A `www.` site redirecting to the custom domain is added only for root domains (two labels,
 e.g. `tagtape.app`); subdomains get none, so Caddy never requests certificates for unused names.
 A root domain under a two-part suffix (`example.co.uk`) counts as a subdomain here and gets no
 `www.`; point `www.` at the app yourself if you need it.
+Every app's responses are compressed (zstd, gzip) and get these headers from Caddy:
+
+- always: `Strict-Transport-Security` (a year, with subdomains), `X-Content-Type-Options: nosniff`
+  and `Referrer-Policy: strict-origin-when-cross-origin`, and the `Server` header is removed;
+- only if the app sends none of its own: `X-Frame-Options: DENY`, a `Permissions-Policy` that
+  turns off camera, microphone, geolocation, payment and USB, and
+  `Cross-Origin-Opener-Policy: same-origin`.
+
+An app's own value for one of the defaults wins, so an app can loosen them. The
+`Content-Security-Policy` is the app's to set, as no default fits every app.
+
+- To be framed elsewhere, an app sends its own `X-Frame-Options`, or a CSP with `frame-ancestors`,
+  which browsers follow instead.
+- To use the camera, microphone, geolocation, payment or USB, it sends its own
+  `Permissions-Policy` (e.g. `camera=(self)`). A CSP doesn't change these.
+- For popups that need `window.opener` (some OAuth flows), it sends its own
+  `Cross-Origin-Opener-Policy` (e.g. `same-origin-allow-popups`).
+
 Caddy passes the visitor's address to the app as `X-Forwarded-For`. With `EDGE=cloudflare`,
 site blocks are plain HTTP (`http://host`): Cloudflare terminates TLS and a tunnel delivers
 requests to Caddy.
 
 Every app container gets: no Linux capabilities, `no-new-privileges`, memory/CPU/pids
 limits, rotated logs (3 × 10 MB), and the `spotcraft-edge` network, where Caddy reaches it as
-`app-<name>`.
+`app-<name>-<slot>`. Its `app.json` (which holds the env), compose file (which also holds
+`DATABASE_URL`) and `secrets.json` are readable by the agent's user only.
+
+## Deploy hook
+
+An app's CI can deploy a new tag through the dashboard's `/hooks/deploy/<name>`, which relays
+to `/apps/:name/release` ([ADR 0029](../docs/decisions/0029-deploy-hook.md), guide:
+[Deploy from CI](../docs/guides/deploy-from-ci.md)).
+
+- **The token.** `POST /apps/:name/hook-token` makes a token (32 random bytes, base64url) and
+  keeps only its SHA-256 in the app's `secrets.json`; a new one replaces the old. It is never
+  part of the app as the API returns it.
+- **The routes check it.** The release routes take it in `X-Hook-Token`, next to the dashboard's
+  own token, and compare digests in constant time. A missing, wrong or rotated token, an app without
+  a hook and an app that doesn't exist all get 401.
+- **A release changes only the tag,** and never takes over DNS records. It reads the stored
+  spec inside the deploy queue, so an edit queued before it is kept, and answers 202 at once.
+- **One release per app waits.** A newer one cancels the waiting one and queues behind
+  anything queued meanwhile. When it runs, the token it came with must still be the app's. Token
+  changes have their own lock on `secrets.json`, not the deploy queue, so they answer at once
+  and cancel a waiting release straight away.
+- **Its state** (`deploying`, `live`, `failed` with the agent's message, no command output) is
+  kept in memory, the latest release per app, and forgotten when the token changes, the app is
+  removed, or the dashboard deploys it. Without a record, `GET` answers `live` with the app's
+  tag once startup recovery has finished, and 503 before. Without one since the agent started, `GET`
+  answers `live` with the app's tag.
+
+## Backups
+
+With the four `BACKUP_*` settings, the agent backs up every app at 03:00 UTC to an
+S3-compatible bucket ([ADR 0030](../docs/decisions/0030-backups.md), guide:
+[Backups and restoring](../docs/guides/backups.md)). Each app gets a folder
+`<name>/<time>/` (`20261114T030000Z`) with:
+
+- `database.dump`, for an app with a database: `pg_dump --format=custom`, run with
+  `docker exec` in `POSTGRES_CONTAINER` as the superuser over its local socket, with
+  `--lock-wait-timeout=30s` and 5 minutes in all (`timeout` inside the container). It is held in
+  memory, up to 32 MB; a larger one fails with that reason.
+- `app.json` and `secrets.json`, as they are on disk.
+
+Each app's backup takes its own turn in the deploy queue, so deploys can go between them. Each
+upload has a minute. A backup on request is refused (409) while one for that app is waiting.
+The result goes into `apps/<name>/backup.json`, written to a temp file and renamed (a file that
+can't be read counts as no backup yet): `{ at, ok, key, bytes, lastOkAt }`, or `error` in place
+of `key` and `bytes`. A failure is also logged. Uploads are signed with AWS SigV4
+(`src/s3.ts`), path-style, with region `auto`.
+
+| Setting                    | What                                                       |
+| -------------------------- | ---------------------------------------------------------- |
+| `BACKUP_S3_ENDPOINT`       | `https://<account>.r2.cloudflarestorage.com`, an origin    |
+| `BACKUP_BUCKET`            | the bucket                                                 |
+| `BACKUP_ACCESS_KEY_ID`     | the key: object read and write on that bucket only         |
+| `BACKUP_SECRET_ACCESS_KEY` | its secret                                                 |
+| `POSTGRES_CONTAINER`       | where `pg_dump` runs (default `spotcraft-apps-postgres-1`) |
+
+All four `BACKUP_*` or none; the agent refuses to start with some.
 
 ## App databases
 

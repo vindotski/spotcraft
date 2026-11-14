@@ -7,6 +7,7 @@ import {
   nameParamsSchema,
   RESERVED_NAMES,
   servedHosts,
+  TAG,
 } from './app-spec.ts'
 import { AgentError, type Apps } from './apps.ts'
 
@@ -218,6 +219,97 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
       const deleted = await apps.deleteUser(request.params.name, request.params.id)
       return deleted ? reply.code(204).send() : reply.code(404).send({ error: 'No such user' })
     },
+  )
+
+  // Backups (ADR 0030): every app's last one, one app's, and a backup now.
+  app.get('/backups', async () => {
+    const result: Record<string, unknown> = {}
+    for (const { name } of await apps.list()) result[name] = (await apps.backupStatus(name)) ?? null
+    return { enabled: Boolean(apps.settings.backups), apps: result }
+  })
+
+  app.get<{ Params: NameParams }>(
+    '/apps/:name/backup',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) => {
+      if (!(await apps.get(request.params.name)))
+        return reply.code(404).send({ error: 'No such app' })
+      return (await apps.backupStatus(request.params.name)) ?? null
+    },
+  )
+
+  app.post<{ Params: NameParams }>(
+    '/apps/:name/backup',
+    { schema: { params: nameParamsSchema } },
+    async (request) => apps.backup(request.params.name),
+  )
+
+  // The app's deploy hook (ADR 0029). The dashboard manages its token: a new one is returned
+  // once, and only its hash is kept.
+  app.get<{ Params: NameParams }>(
+    '/apps/:name/hook-token',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) => {
+      const enabled = await apps.hasHookToken(request.params.name)
+      return enabled === undefined ? reply.code(404).send({ error: 'No such app' }) : { enabled }
+    },
+  )
+
+  app.post<{ Params: NameParams }>(
+    '/apps/:name/hook-token',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) =>
+      reply.code(201).send({ token: await apps.createHookToken(request.params.name) }),
+  )
+
+  app.delete<{ Params: NameParams }>(
+    '/apps/:name/hook-token',
+    { schema: { params: nameParamsSchema } },
+    async (request, reply) => {
+      await apps.deleteHookToken(request.params.name)
+      return reply.code(204).send()
+    },
+  )
+
+  // A release from the app's CI, relayed by the dashboard: the hook token comes in
+  // X-Hook-Token, next to the dashboard's own token. Only the tag can change. A missing token
+  // gets the same 401 as a wrong one.
+  const hookToken = (headers: Record<string, string | string[] | undefined>) => {
+    const value = headers['x-hook-token']
+    if (typeof value !== 'string' || value.length === 0 || value.length > 256) {
+      throw new AgentError('Unauthorized', 401)
+    }
+    return value
+  }
+
+  app.post<{ Params: NameParams; Body: { tag: string } }>(
+    '/apps/:name/release',
+    {
+      // The token is checked before the body, so a caller without one learns nothing more.
+      preValidation: async (request) => {
+        hookToken(request.headers)
+      },
+      schema: {
+        params: nameParamsSchema,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['tag'],
+          properties: { tag: { type: 'string', pattern: TAG } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { name } = request.params
+      const state = await apps.release(name, hookToken(request.headers), request.body.tag)
+      return reply.code(202).send(state)
+    },
+  )
+
+  app.get<{ Params: NameParams }>(
+    '/apps/:name/release',
+    { schema: { params: nameParamsSchema } },
+    async (request) => apps.releaseState(request.params.name, hookToken(request.headers)),
   )
 
   app.get<{ Params: NameParams; Querystring: { tail: number } }>(

@@ -6,8 +6,10 @@ data under its id. The data lives in the app's own Postgres database on the serv
 `spotcraft dev` command runs the same setup. Why it works this way is in
 [ADR 0016](../decisions/0016-backend-kit.md) and [ADR 0017](../decisions/0017-local-stack.md).
 
-This guide uses SvelteKit 3. Any server framework works that gives you the incoming
-`Request` and lets you add headers to the response.
+This guide uses SvelteKit 3. For Nuxt and TanStack Start, the kit has adapters:
+[Guest accounts in Nuxt](kit-nuxt.md) and [Guest accounts in TanStack Start](kit-tanstack-start.md)
+cover the wiring, and this guide the rest. Any server framework works that gives you the
+incoming `Request` and lets you add headers to the response.
 
 ## Install
 
@@ -16,8 +18,8 @@ npm install @spotcraft/kit drizzle-orm
 npm install --save-dev spotcraft
 ```
 
-Use the same version as the Spotcraft you deploy to. The kit refuses to start against an older
-`auth` schema.
+The kit has its own version ([ADR 0027](../decisions/0027-kit-version.md)). Its changelog says
+when a release needs a newer Spotcraft; it refuses to start against an older `auth` schema.
 
 ## Run it locally
 
@@ -75,7 +77,7 @@ cookie exists. Every crawler would make one too, and nobody would ever come back
 
 ```ts
 // src/hooks.server.ts
-import { GuestLimitError } from '@spotcraft/kit'
+import { isGuestLimitError } from '@spotcraft/kit'
 import type { Handle } from '@sveltejs/kit/hooks'
 import { backend } from '#lib/server/backend.ts'
 
@@ -84,11 +86,9 @@ export const handle: Handle = async ({ event, resolve }) => {
   const reading = event.request.method === 'GET' || event.request.method === 'HEAD'
   let session
   try {
-    session = reading
-      ? await kit.currentGuest(event.request)
-      : await kit.guest(event.request, { clientAddress: event.getClientAddress() })
+    session = reading ? await kit.currentGuest(event.request) : await kit.guest(event.request)
   } catch (error) {
-    if (error instanceof GuestLimitError) {
+    if (isGuestLimitError(error)) {
       return new Response('Too many new visitors; try again soon.', {
         status: 429,
         headers: { 'retry-after': String(error.retryAfterSeconds) },
@@ -102,6 +102,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   return response
 }
 ```
+
+`guest()` counts new guests per client address: the last `X-Forwarded-For` entry, the one
+Spotcraft's Caddy sets. Behind another proxy, or none, pass
+`kit.guest(event.request, { clientAddress: event.getClientAddress() })` instead.
 
 Type `event.locals.guest` as `Guest | null` (the kit's `Guest`) in `src/app.d.ts`: it is
 `null` until the visitor saves something. SvelteKit 3 has no `$lib` alias; the snippets use
@@ -147,7 +151,45 @@ export const actions = {
 }
 ```
 
-The app runs its own migrations for `public`, for example with drizzle-kit.
+## Migrate when the server starts
+
+The app owns `public` and runs its own migrations there. The kit's runner applies them in one
+transaction, under a lock, when the server starts; `drizzle-kit generate` can write the files.
+Check the database first, so a wrong one stops the deploy instead of the first save:
+
+```ts
+// src/hooks.server.ts
+import { prepare } from '@spotcraft/kit'
+import { migrationsFromFiles } from '@spotcraft/kit/migrate'
+import { building } from '$app/environment'
+import type { ServerInit } from '@sveltejs/kit'
+
+const files = import.meta.glob<string>('./lib/server/migrations/*.sql', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+})
+const migrations = migrationsFromFiles(Object.entries(files).map(([name, sql]) => ({ name, sql })))
+
+export const init: ServerInit = async () => {
+  if (!building) await prepare(backend(), { migrations })
+}
+```
+
+Migrations only add: never drop or rename in a later one. For a few seconds during a release,
+the old and the new version run against the same database. Add new files only at the end; the
+runner stops on one put between applied ones. The [kit's README](https://github.com/vindotski/spotcraft/blob/main/packages/kit/README.md#the-apps-migrations)
+has the details, and `adoptDrizzle` for a database Drizzle's own migrator managed.
+
+**A health route** for the image's `HEALTHCHECK`, so a deploy waits until the database answers:
+
+```ts
+// src/routes/health/+server.ts
+import { healthResponse } from '@spotcraft/kit'
+import { backend } from '#lib/server/backend.ts'
+
+export const GET = () => healthResponse(backend())
+```
 
 ## Deploy it on Spotcraft
 
@@ -158,9 +200,9 @@ The app runs its own migrations for `public`, for example with drizzle-kit.
    ENV PROTOCOL_HEADER=x-forwarded-proto ADDRESS_HEADER=X-Forwarded-For XFF_DEPTH=1
    ```
 
-   Without `ADDRESS_HEADER`, every visitor seems to come from Caddy. The limit on new guests
-   (30 per address per 10 minutes) would then apply to all of them together. Without
-   `PROTOCOL_HEADER`, form posts are refused as cross-site.
+   Without `PROTOCOL_HEADER`, form posts are refused as cross-site. `ADDRESS_HEADER` makes
+   `event.getClientAddress()` the visitor's address rather than Caddy's; the kit reads the
+   header itself.
 2. **In the dashboard**, add or edit the app and tick **Database**. Spotcraft creates the app's
    database and sets `DATABASE_URL`; don't set it yourself.
 3. **Add two environment variables**: `AUTH_SECRET` (`openssl rand -hex 32`, never the local

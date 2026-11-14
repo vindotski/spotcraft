@@ -1,6 +1,6 @@
 {
   "name": "@spotcraft/kit",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Guest accounts and app databases for server-rendered apps on Spotcraft",
   "keywords": [
     "spotcraft",
@@ -46,6 +46,24 @@
       "spotcraft-source": "./src/provision.ts",
       "types": "./dist/provision.d.ts",
       "default": "./dist/provision.js"
+    },
+    "./migrate": {
+      "browser": "./browser.js",
+      "spotcraft-source": "./src/migrate.ts",
+      "types": "./dist/migrate.d.ts",
+      "default": "./dist/migrate.js"
+    },
+    "./nuxt": {
+      "browser": "./browser.js",
+      "spotcraft-source": "./src/nuxt.ts",
+      "types": "./dist/nuxt.d.ts",
+      "default": "./dist/nuxt.js"
+    },
+    "./tanstack-start": {
+      "browser": "./browser.js",
+      "spotcraft-source": "./src/tanstack-start.ts",
+      "types": "./dist/tanstack-start.d.ts",
+      "default": "./dist/tanstack-start.js"
     }
   },
   "publishConfig": {
@@ -62,9 +80,21 @@
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1"
   },
+  "peerDependencies": {
+    "@tanstack/react-start": "^1.169.4"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-start": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@tanstack/react-start": "^1.169.5",
     "@types/node": "catalog:",
     "@types/pg": "^8.23.1",
+    "h3": "^1.15.11",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "catalog:"
   }
 }

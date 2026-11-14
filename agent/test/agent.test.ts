@@ -1,40 +1,55 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 import { buildApp } from '../src/app.ts'
 import { Apps, type Databases } from '../src/apps.ts'
+import type { Domains } from '../src/domains.ts'
 import type { Runner, RunResult } from '../src/runner.ts'
 import { Store } from '../src/store.ts'
 
 const TOKEN = 'test-token-0123456789abcdef0123456789'
 const auth = { authorization: `Bearer ${TOKEN}` }
 
-/** Records docker calls; `fail` makes a matching call return an error. */
+/**
+ * Records docker calls and keeps track of containers, as `<project>/<service>` (also their ID);
+ * `fail` makes a matching call return an error.
+ */
 function fakeDocker() {
   const calls: string[][] = []
-  const running = new Set<string>()
+  const running = new Set<string>(['spotcraft-apps/caddy'])
   let fail: ((args: string[]) => boolean) | undefined
+  let gate: Promise<void> | undefined
   const run: Runner = async (_file, args): Promise<RunResult> => {
     calls.push(args)
+    // `hold()` keeps pulls waiting, as a slow deploy would, until it is let go.
+    if (gate && args.includes('pull')) await gate
     if (fail?.(args)) return { code: 1, stdout: '', stderr: 'boom' }
-    // `docker compose -p <project> … up|down` starts or stops that project's container.
     const project = args[0] === 'compose' ? args[args.indexOf('-p') + 1] : undefined
-    if (project && args.includes('up')) running.add(project)
-    if (project && args.includes('down')) running.delete(project)
+    // `docker compose -p <project> … up … <service>` starts that service's container; `down`
+    // removes all of the project's, `rm --stop --force <service>` that service's.
+    if (project && args.includes('up')) running.add(`${project}/${args.at(-1)}`)
+    if (project && args.includes('down')) {
+      for (const id of running) if (id.startsWith(`${project}/`)) running.delete(id)
+    }
+    if (project && args.includes('rm')) running.delete(`${project}/${args.at(-1)}`)
+    // `docker rm <id>…` (after `docker stop`).
+    if (args[0] === 'rm') for (const id of args.slice(1)) running.delete(id)
     if (args[0] === 'ps') {
       // Like `docker ps --format json`: one line per container, labels as one string.
       const only = /=(spotcraft-app-[^,]+)$/.exec(args[args.indexOf('--filter') + 1])?.[1]
-      const rows = [...running, 'spotcraft-apps']
-        .filter((p) => !only || p === only)
-        .map((p) =>
-          JSON.stringify({
-            Labels: `com.docker.compose.oneoff=False,com.docker.compose.project=${p},com.docker.compose.service=x`,
+      const rows = [...running]
+        .filter((id) => !only || id.startsWith(`${only}/`))
+        .map((id) => {
+          const [p, service] = id.split('/')
+          return JSON.stringify({
+            ID: id,
+            Labels: `com.docker.compose.oneoff=False,com.docker.compose.project=${p},com.docker.compose.service=${service}`,
             State: 'running',
             Status: 'Up 1 minute (healthy)',
-          }),
-        )
+          })
+        })
       return { code: 0, stdout: `${rows.join('\n')}\n`, stderr: '' }
     }
     if (args.includes('logs')) return { code: 0, stdout: 'line 1\nline 2\n', stderr: '' }
@@ -43,8 +58,19 @@ function fakeDocker() {
   return {
     run,
     calls,
+    running,
     failWhen: (match: (args: string[]) => boolean) => {
       fail = match
+    },
+    hold: () => {
+      let release = () => {}
+      gate = new Promise((resolve) => {
+        release = () => {
+          gate = undefined
+          resolve()
+        }
+      })
+      return release
     },
   }
 }
@@ -90,15 +116,20 @@ const spec = {
   env: { TRUST_PROXY: '1', PRICE: 'costs $5' },
 }
 
+/** `spec` with the defaults the API fills in, for calling `Apps` directly. */
+const fullSpec = { ...spec, port: 3000, memory: '512m', cpus: 1, readOnly: true, database: false }
+
 describe('agent', () => {
   let dir: string
   let docker: ReturnType<typeof fakeDocker>
   let app: ReturnType<typeof buildApp>
+  let apps: Apps
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'spotcraft-agent-'))
     docker = fakeDocker()
-    app = buildApp({ token: TOKEN, apps: new Apps(new Store(dir), docker.run, 'caddy-test') })
+    apps = new Apps(new Store(dir), docker.run, 'caddy-test')
+    app = buildApp({ token: TOKEN, apps })
   })
   afterEach(async () => {
     await app.close()
@@ -112,7 +143,7 @@ describe('agent', () => {
     assert.equal(wrong.statusCode, 401)
   })
 
-  it('deploys an app: hardened compose file, Caddy site, pull, up, reload', async () => {
+  it('deploys an app into its first slot: hardened compose file, Caddy site, pull, up, reload', async () => {
     const res = await app.inject({
       method: 'PUT',
       url: '/apps/tagtape',
@@ -124,23 +155,518 @@ describe('agent', () => {
     assert.equal(res.json().health, 'healthy')
 
     const compose = JSON.parse(await readFile(join(dir, 'apps/tagtape/compose.yaml'), 'utf8'))
-    const service = compose.services.tagtape
+    assert.deepEqual(Object.keys(compose.services), ['tagtape-blue'])
+    const service = compose.services['tagtape-blue']
     assert.equal(compose.name, 'spotcraft-app-tagtape')
     assert.equal(service.image, 'vindotski/tagtape:2.0.0')
     assert.deepEqual(service.cap_drop, ['ALL'])
     assert.equal(service.read_only, true)
     assert.equal(service.mem_limit, '512m')
     assert.equal(service.environment.PRICE, 'costs $$5', 'dollar signs are escaped for Compose')
-    assert.deepEqual(service.networks.edge.aliases, ['app-tagtape'])
+    assert.deepEqual(service.networks.edge.aliases, ['app-tagtape-blue'])
     assert.equal(compose.networks.edge.name, 'spotcraft-edge')
 
     const site = await readFile(join(dir, 'sites/tagtape.caddy'), 'utf8')
     assert.match(site, /^tagtape\.app \{$/m)
-    assert.match(site, /reverse_proxy app-tagtape:3000/)
+    assert.match(site, /reverse_proxy app-tagtape-blue:3000/)
     assert.match(site, /^www\.tagtape\.app \{$/m)
+    // Defaults only when the app sends none of its own (Caddy's `?`); no CSP.
+    assert.match(site, /^\t\t\?X-Frame-Options "DENY"$/m)
+    assert.match(site, /^\t\t\?Permissions-Policy "camera=\(\), microphone=\(\), /m)
+    assert.match(site, /^\t\t\?Cross-Origin-Opener-Policy "same-origin"$/m)
+    assert.doesNotMatch(site, /Content-Security-Policy/)
 
     const steps = docker.calls.map((args) => args.find((a) => ['pull', 'up', 'reload'].includes(a)))
     assert.deepEqual(steps.filter(Boolean), ['pull', 'up', 'reload'])
+    const up = docker.calls.find((args) => args.includes('up'))
+    assert.equal(up?.at(-1), 'tagtape-blue', 'only the new slot is started')
+    assert.ok(!up?.includes('--remove-orphans'))
+  })
+
+  describe('deploy hook (ADR 0029)', () => {
+    const deployed = () =>
+      app.inject({ method: 'PUT', url: '/apps/tagtape', headers: auth, payload: spec })
+    const newToken = async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      assert.equal(res.statusCode, 201, res.body)
+      return res.json().token as string
+    }
+    const release = (token: string, tag: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers: { ...auth, 'x-hook-token': token },
+        payload: { tag },
+      })
+    const state = (token: string) =>
+      app.inject({ url: '/apps/tagtape/release', headers: { ...auth, 'x-hook-token': token } })
+    /** Waits for the release deploying in the background. */
+    const settled = async (token: string) => {
+      for (let i = 0; i < 100; i++) {
+        const body = (await state(token)).json()
+        if (body.state !== 'deploying') return body
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      throw new Error('the release never settled')
+    }
+
+    it('makes a token, keeps only its hash, and turns the hook off again', async () => {
+      await deployed()
+      const status = () => app.inject({ url: '/apps/tagtape/hook-token', headers: auth })
+      assert.deepEqual((await status()).json(), { enabled: false })
+      const token = await newToken()
+      assert.ok(token.length >= 43)
+      assert.deepEqual((await status()).json(), { enabled: true })
+      const secrets = await readFile(join(dir, 'apps/tagtape/secrets.json'), 'utf8')
+      assert.ok(!secrets.includes(token), 'the token itself is not stored')
+      // It is never part of the app as the API returns it.
+      assert.ok(!(await app.inject({ url: '/apps/tagtape', headers: auth })).body.includes('hook'))
+
+      const off = await app.inject({
+        method: 'DELETE',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      assert.equal(off.statusCode, 204)
+      assert.deepEqual((await status()).json(), { enabled: false })
+      assert.equal((await release(token, '2.1.0')).statusCode, 401)
+    })
+
+    it('deploys only the new tag, answering at once, and reports how it went', async () => {
+      await deployed()
+      const token = await newToken()
+      const res = await release(token, '2.1.0')
+      assert.equal(res.statusCode, 202, res.body)
+      assert.equal(res.json().state, 'deploying')
+      assert.equal(res.json().tag, '2.1.0')
+      assert.equal((await settled(token)).state, 'live')
+
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.1.0')
+      assert.equal(stored.image, spec.image, 'the image stays')
+      assert.deepEqual(stored.env, spec.env, 'the env stays')
+    })
+
+    it('reports a failed release without its command output', async () => {
+      await deployed()
+      const token = await newToken()
+      docker.failWhen((args) => args.includes('pull'))
+      assert.equal((await release(token, '9.9.9')).statusCode, 202)
+      const result = await settled(token)
+      assert.equal(result.state, 'failed')
+      assert.match(result.error, /Could not pull vindotski\/tagtape:9\.9\.9/)
+      assert.ok(!('output' in result))
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.0.0')
+    })
+
+    it('refuses wrong, missing and rotated tokens alike, and bad tags', async () => {
+      await deployed()
+      // No token yet.
+      assert.equal((await release('anything', '2.1.0')).statusCode, 401)
+      const first = await newToken()
+      const second = await newToken()
+      assert.equal((await release(first, '2.1.0')).statusCode, 401, 'rotated out')
+      assert.equal((await release(`${second}x`, '2.1.0')).statusCode, 401)
+      assert.equal((await state(first)).statusCode, 401)
+      // An app that doesn't exist answers the same as a wrong token.
+      const missing = await app.inject({
+        method: 'POST',
+        url: '/apps/nope/release',
+        headers: { ...auth, 'x-hook-token': second },
+        payload: { tag: '1.0.0' },
+      })
+      assert.equal(missing.statusCode, 401)
+      const noHeader = await app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers: auth,
+        payload: { tag: '2.1.0' },
+      })
+      assert.equal(noHeader.statusCode, 401, 'no token is the same as a wrong one')
+      const noHeaderGet = await app.inject({ url: '/apps/tagtape/release', headers: auth })
+      assert.equal(noHeaderGet.statusCode, 401)
+      assert.equal((await release(second, '-bad')).statusCode, 400)
+      assert.equal((await release(second, '2.1.0')).statusCode, 202)
+      await settled(second)
+    })
+
+    it('still needs the dashboard token', async () => {
+      await deployed()
+      const token = await newToken()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers: { 'x-hook-token': token },
+        payload: { tag: '2.1.0' },
+      })
+      assert.equal(res.statusCode, 401)
+    })
+
+    const pulls = () => docker.calls.filter((args) => args.includes('pull')).map((a) => a)
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setTimeout(r, 2))
+      assert.ok(check(), 'timed out')
+    }
+
+    it('keeps at most one release waiting per app: a newer one replaces its tag', async () => {
+      await deployed()
+      const token = await newToken()
+      const before = pulls().length
+      const letGo = docker.hold()
+      assert.equal((await release(token, '2.1.0')).statusCode, 202)
+      await until(() => pulls().length === before + 1) // 2.1.0 is deploying
+      assert.equal((await release(token, '2.2.0')).statusCode, 202) // waits
+      assert.equal((await release(token, '2.3.0')).statusCode, 202) // replaces 2.2.0
+      letGo()
+      await until(() => pulls().length === before + 2)
+      const result = await settled(token)
+      assert.deepEqual([result.state, result.tag], ['live', '2.3.0'])
+      assert.equal(pulls().length, before + 2, '2.2.0 never deployed')
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.3.0')
+    })
+
+    it('drops a waiting release when the hook is turned off', async () => {
+      await deployed()
+      const token = await newToken()
+      const before = pulls().length
+      const letGo = docker.hold()
+      await release(token, '2.1.0')
+      await until(() => pulls().length === before + 1)
+      await release(token, '2.2.0') // waits behind 2.1.0
+      const off = app.inject({ method: 'DELETE', url: '/apps/tagtape/hook-token', headers: auth })
+      letGo()
+      assert.equal((await off).statusCode, 204)
+      // 2.1.0 had started and finishes; 2.2.0 never runs.
+      await new Promise((r) => setTimeout(r, 20))
+      assert.equal(pulls().length, before + 1)
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.1.0')
+    })
+
+    it("never takes over DNS records, and keeps the app's own take-over setting", async () => {
+      const attached: boolean[] = []
+      const domains = {
+        attach: async (_name: string, _hosts: string[], { takeOver = false } = {}) => {
+          attached.push(takeOver)
+          return async () => {}
+        },
+        detach: async () => {},
+        status: async () => [],
+      } as unknown as Domains
+      const withDns = buildApp({
+        token: TOKEN,
+        apps: new Apps(new Store(dir), docker.run, 'caddy-test', undefined, undefined, { domains }),
+      })
+      const put = await withDns.inject({
+        method: 'PUT',
+        url: '/apps/tagtape',
+        headers: auth,
+        payload: { ...spec, takeOver: true },
+      })
+      assert.equal(put.statusCode, 200, put.body)
+      const made = await withDns.inject({
+        method: 'POST',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      const token = made.json().token
+      const headers = { ...auth, 'x-hook-token': token }
+      await withDns.inject({
+        method: 'POST',
+        url: '/apps/tagtape/release',
+        headers,
+        payload: { tag: '2.1.0' },
+      })
+      for (let i = 0; i < 100; i++) {
+        const body = (await withDns.inject({ url: '/apps/tagtape/release', headers })).json()
+        if (body.state !== 'deploying') break
+        await new Promise((r) => setTimeout(r, 5))
+      }
+      assert.deepEqual(attached, [true, false], 'the dashboard deploy may, the hook may not')
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.takeOver, true, 'the setting itself stays')
+      assert.equal(stored.tag, '2.1.0')
+      await withDns.close()
+    })
+
+    it('says the live tag without a release since start, only once recovery has run', async () => {
+      await deployed()
+      const token = await newToken()
+      const before = await state(token)
+      assert.equal(before.statusCode, 503, 'the stored tag may not be what serves yet')
+      await apps.recover()
+      assert.deepEqual((await state(token)).json(), { state: 'live', tag: '2.0.0' })
+    })
+
+    it('forgets a finished hook release once the dashboard deploys another tag', async () => {
+      await deployed()
+      await apps.recover()
+      const token = await newToken()
+      await release(token, '2.1.0')
+      assert.equal((await settled(token)).tag, '2.1.0')
+      const put = await app.inject({
+        method: 'PUT',
+        url: '/apps/tagtape',
+        headers: auth,
+        payload: { ...spec, tag: '2.5.0' },
+      })
+      assert.equal(put.statusCode, 200)
+      assert.deepEqual((await state(token)).json(), { state: 'live', tag: '2.5.0' })
+    })
+
+    it('makes and turns off tokens at once, even while a deploy runs', async () => {
+      await deployed()
+      const letGo = docker.hold()
+      const slow = app.inject({
+        method: 'PUT',
+        url: '/apps/tagtape',
+        headers: auth,
+        payload: { ...spec, tag: '2.1.0' },
+      })
+      await until(() => pulls().length >= 2)
+      const made = await app.inject({
+        method: 'POST',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      assert.equal(made.statusCode, 201, 'not queued behind the deploy')
+      const off = await app.inject({
+        method: 'DELETE',
+        url: '/apps/tagtape/hook-token',
+        headers: auth,
+      })
+      assert.equal(off.statusCode, 204)
+      letGo()
+      assert.equal((await slow).statusCode, 200)
+    })
+
+    it('puts a newer release after an edit queued in between, and cancels the older one', async () => {
+      await deployed()
+      const token = await newToken()
+      const letGo = docker.hold()
+      // Something deploys; release A waits; an edit is queued; then release B.
+      const busy = app.inject({
+        method: 'PUT',
+        url: '/apps/tagtape',
+        headers: auth,
+        payload: { ...spec, tag: '2.0.1' },
+      })
+      await until(() => pulls().length >= 2)
+      await release(token, '2.1.0')
+      const edit = app.inject({
+        method: 'PUT',
+        url: '/apps/tagtape',
+        headers: auth,
+        payload: { ...spec, tag: '2.0.2', env: { ...spec.env, EDITED: '1' } },
+      })
+      await new Promise((r) => setTimeout(r, 5))
+      await release(token, '2.2.0')
+      letGo()
+      await busy
+      await edit
+      const result = await settled(token)
+      assert.deepEqual([result.state, result.tag], ['live', '2.2.0'])
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.2.0', 'B came after the edit')
+      assert.equal(stored.env.EDITED, '1', 'and kept it')
+      const deployed21 = JSON.stringify(docker.calls).includes('2.1.0')
+      assert.equal(deployed21, false, 'A was cancelled, never pulled')
+    })
+
+    it("cancels a waiting release when the token changes, so an old token can't refill it", async () => {
+      await deployed()
+      const old = await newToken()
+      const letGo = docker.hold()
+      const busy = app.inject({
+        method: 'PUT',
+        url: '/apps/tagtape',
+        headers: auth,
+        payload: { ...spec, tag: '2.0.1' },
+      })
+      await until(() => pulls().length >= 2)
+      await release(old, '6.6.6') // waits
+      await newToken() // at once: cancels it
+      assert.equal((await release(old, '6.6.7')).statusCode, 401)
+      letGo()
+      await busy
+      await new Promise((r) => setTimeout(r, 20))
+      assert.equal(JSON.stringify(docker.calls).includes('6.6.'), false)
+    })
+  })
+
+  describe('slots (ADR 0028)', () => {
+    const deploy = (tag: string) =>
+      app.inject({ method: 'PUT', url: '/apps/tagtape', headers: auth, payload: { ...spec, tag } })
+    const site = () => readFile(join(dir, 'sites/tagtape.caddy'), 'utf8')
+    const containers = () => [...docker.running].filter((id) => id.startsWith('spotcraft-app-'))
+
+    it('starts the other slot, moves traffic once it is healthy, then stops the old one', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      docker.calls.length = 0
+      const res = await deploy('2.1.0')
+      assert.equal(res.statusCode, 200, res.body)
+      assert.match(await site(), /reverse_proxy app-tagtape-green:3000/)
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-green'])
+
+      // The old slot stops only after Caddy has moved traffic, and gets time to finish.
+      const step = (args: string[]) =>
+        args.includes('up')
+          ? `up ${args.at(-1)}`
+          : args.includes('reload')
+            ? 'reload'
+            : args[0] === 'stop' || args[0] === 'rm'
+              ? `${args[0]} ${args.slice(-1)}`
+              : undefined
+      assert.deepEqual(docker.calls.map(step).filter(Boolean), [
+        'up tagtape-green',
+        'reload',
+        'stop spotcraft-app-tagtape/tagtape-blue',
+        'rm spotcraft-app-tagtape/tagtape-blue',
+      ])
+      const stop = docker.calls.find((args) => args[0] === 'stop')
+      assert.deepEqual(stop?.slice(0, 3), ['stop', '--time', '30'])
+
+      // And back to blue on the next deploy.
+      assert.equal((await deploy('2.2.0')).statusCode, 200)
+      assert.match(await site(), /reverse_proxy app-tagtape-blue:3000/)
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-blue'])
+    })
+
+    it('leaves the live slot serving, untouched, when the new one fails to become healthy', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      const before = await readFile(join(dir, 'apps/tagtape/compose.yaml'), 'utf8')
+      docker.failWhen((args) => args.includes('up'))
+      docker.calls.length = 0
+      assert.equal((await deploy('9.9.9')).statusCode, 502)
+
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-blue'])
+      assert.match(await site(), /reverse_proxy app-tagtape-blue:3000/)
+      assert.equal(await readFile(join(dir, 'apps/tagtape/compose.yaml'), 'utf8'), before)
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.0.0')
+      // The failed slot is removed; the live one is never stopped or restarted.
+      assert.ok(docker.calls.some((args) => args.includes('rm') && args.at(-1) === 'tagtape-green'))
+      assert.ok(!docker.calls.some((args) => args[0] === 'stop'))
+      assert.ok(!docker.calls.some((args) => args.includes('up') && args.at(-1) === 'tagtape-blue'))
+    })
+
+    it('moves an app deployed before slots into one, then removes its old container', async () => {
+      // As an older agent left it: one service named after the app, reached as app-tagtape.
+      await mkdir(join(dir, 'apps/tagtape'), { recursive: true })
+      await mkdir(join(dir, 'sites'), { recursive: true })
+      await writeFile(
+        join(dir, 'apps/tagtape/app.json'),
+        JSON.stringify({
+          ...spec,
+          name: 'tagtape',
+          port: 3000,
+          memory: '512m',
+          cpus: 1,
+          readOnly: true,
+          database: false,
+        }),
+      )
+      await writeFile(
+        join(dir, 'apps/tagtape/compose.yaml'),
+        JSON.stringify({ name: 'spotcraft-app-tagtape', services: { tagtape: {} } }),
+      )
+      await writeFile(join(dir, 'sites/tagtape.caddy'), 'reverse_proxy app-tagtape:3000\n')
+      docker.running.add('spotcraft-app-tagtape/tagtape')
+
+      const status = await app.inject({ url: '/apps/tagtape', headers: auth })
+      assert.equal(status.json().state, 'running', 'its status is still found')
+
+      assert.equal((await deploy('2.1.0')).statusCode, 200)
+      assert.match(await site(), /reverse_proxy app-tagtape-blue:3000/)
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-blue'])
+    })
+
+    it('reports the live slot while both run', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      // A deploy in progress: green started, blue still live.
+      docker.running.add('spotcraft-app-tagtape/tagtape-green')
+      const res = await app.inject({ url: '/apps/tagtape', headers: auth })
+      assert.equal(res.json().state, 'running')
+      const listed = await app.inject({ url: '/apps', headers: auth })
+      assert.equal(listed.json().apps.length, 1)
+    })
+
+    it('recovers from a deploy that stopped before its commit: the live slot stays', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      // As an agent that stopped after starting green, before committing it.
+      const apps = new Apps(new Store(dir), docker.run, 'caddy-test')
+      await new Store(dir).stage('tagtape', {
+        spec: JSON.stringify({ ...fullSpec, name: 'tagtape', tag: '9.9.9' }),
+        compose: JSON.stringify({
+          name: 'spotcraft-app-tagtape',
+          services: { 'tagtape-green': {} },
+        }),
+      })
+      docker.running.add('spotcraft-app-tagtape/tagtape-green')
+      docker.calls.length = 0
+
+      await apps.recover()
+      assert.match(await site(), /reverse_proxy app-tagtape-blue:3000/)
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-blue'])
+      await assert.rejects(stat(join(dir, 'apps/tagtape/compose.next.yaml')))
+      await assert.rejects(stat(join(dir, 'apps/tagtape/app.next.json')))
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.0.0')
+      // Caddy reloads before the stray slot goes.
+      const reload = docker.calls.findIndex((args) => args.includes('reload'))
+      const stop = docker.calls.findIndex((args) => args[0] === 'stop')
+      assert.ok(reload >= 0 && reload < stop, 'reload, then stop')
+    })
+
+    it('recovers from a deploy that committed but never removed the old slot', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      docker.failWhen((args) => args[0] === 'stop')
+      assert.equal((await deploy('2.1.0')).statusCode, 200, 'a failed stop only costs memory')
+      assert.equal(containers().length, 2)
+      docker.failWhen(() => false)
+
+      await new Apps(new Store(dir), docker.run, 'caddy-test').recover()
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-green'])
+      assert.match(await site(), /reverse_proxy app-tagtape-green:3000/)
+    })
+
+    it('finishes a commit that stopped between its two renames', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      const store = new Store(dir)
+      await store.stage('tagtape', {
+        spec: JSON.stringify({ ...fullSpec, name: 'tagtape', tag: '2.1.0' }),
+        compose: JSON.stringify({
+          name: 'spotcraft-app-tagtape',
+          services: { 'tagtape-green': {} },
+        }),
+      })
+      // The compose file was renamed (the commit), the spec wasn't.
+      await rename(
+        join(dir, 'apps/tagtape/compose.next.yaml'),
+        join(dir, 'apps/tagtape/compose.yaml'),
+      )
+      docker.running.add('spotcraft-app-tagtape/tagtape-green')
+
+      await new Apps(store, docker.run, 'caddy-test').recover()
+      const stored = JSON.parse(await readFile(join(dir, 'apps/tagtape/app.json'), 'utf8'))
+      assert.equal(stored.tag, '2.1.0')
+      assert.match(await site(), /reverse_proxy app-tagtape-green:3000/)
+      assert.deepEqual(containers(), ['spotcraft-app-tagtape/tagtape-green'])
+    })
+
+    it('removes both slots with the app', async () => {
+      assert.equal((await deploy('2.0.0')).statusCode, 200)
+      docker.running.add('spotcraft-app-tagtape/tagtape-green')
+      const res = await app.inject({ method: 'DELETE', url: '/apps/tagtape', headers: auth })
+      assert.equal(res.statusCode, 204)
+      assert.deepEqual(containers(), [])
+    })
   })
 
   it('turns away clients that are not on the allowlist, before the token check', async () => {
@@ -179,6 +705,9 @@ describe('agent', () => {
     }
     // `app-<name>` is the alias Caddy reaches each app by: `app-blog` would answer for `blog`.
     assert.equal((await put('app-blog', spec)).statusCode, 400)
+    // `<name>-blue` and `<name>-green` are the slots' services (ADR 0028).
+    assert.equal((await put('blog-blue', spec)).statusCode, 400)
+    assert.equal((await put('blog-green', spec)).statusCode, 400)
     assert.equal((await put('ok', { ...spec, domain: 'evil.app {\n}' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, image: 'UPPER/case' })).statusCode, 400)
     assert.equal((await put('ok', { ...spec, tag: '-x' })).statusCode, 400)
@@ -187,7 +716,7 @@ describe('agent', () => {
     assert.equal(docker.calls.length, 0, 'nothing reaches docker')
   })
 
-  it("keeps each app's compose file, which holds its database password, private", async () => {
+  it("keeps each app's app.json (its env) and compose file (its database password) private", async () => {
     const res = await app.inject({
       method: 'PUT',
       url: '/apps/tagtape',
@@ -195,8 +724,25 @@ describe('agent', () => {
       payload: spec,
     })
     assert.equal(res.statusCode, 200, res.body)
-    const { mode } = await stat(join(dir, 'apps/tagtape/compose.yaml'))
-    assert.equal(mode & 0o777, 0o600)
+    for (const file of ['app.json', 'compose.yaml']) {
+      const { mode } = await stat(join(dir, 'apps/tagtape', file))
+      assert.equal(mode & 0o777, 0o600, file)
+    }
+  })
+
+  it('locks down app files an older agent left readable, in incomplete app directories too', async () => {
+    const apps = new Apps(new Store(dir), docker.run, 'caddy-test')
+    await apps.deploy({ ...fullSpec, name: 'tagtape' })
+    await chmod(join(dir, 'apps/tagtape/app.json'), 0o644)
+    // Not a complete app (no compose file or site), so it isn't listed, but its env is there.
+    await mkdir(join(dir, 'apps/broken'), { recursive: true })
+    await writeFile(join(dir, 'apps/broken/app.json'), '{}', { mode: 0o644 })
+    await writeFile(join(dir, 'apps/broken/secrets.json'), '{}', { mode: 0o644 })
+    await apps.recover()
+    for (const file of ['tagtape/app.json', 'broken/app.json', 'broken/secrets.json']) {
+      const { mode } = await stat(join(dir, 'apps', file))
+      assert.equal(mode & 0o777, 0o600, file)
+    }
   })
 
   it('refuses a domain another app already uses', async () => {
@@ -296,10 +842,10 @@ describe('agent', () => {
 
       const compose = JSON.parse(await readFile(join(dir, 'apps/tagtape/compose.yaml'), 'utf8'))
       assert.equal(
-        compose.services.tagtape.environment.DATABASE_URL,
+        compose.services['tagtape-blue'].environment.DATABASE_URL,
         `postgres://app_tagtape:${password}@postgres:5432/app_tagtape`,
       )
-      assert.equal(compose.services.tagtape.environment.TRUST_PROXY, '1')
+      assert.equal(compose.services['tagtape-blue'].environment.TRUST_PROXY, '1')
     })
 
     it('keeps the password to itself and reuses it on the next deploy', async () => {
@@ -340,7 +886,8 @@ describe('agent', () => {
       const res = await put({ ...withoutField, tag: '2.0.1' })
       assert.equal(res.json().database, true)
       const compose = JSON.parse(await readFile(join(dir, 'apps/tagtape/compose.yaml'), 'utf8'))
-      assert.ok(compose.services.tagtape.environment.DATABASE_URL)
+      // The update went into the other slot.
+      assert.ok(compose.services['tagtape-green'].environment.DATABASE_URL)
       // A new app without the field gets no database.
       const fresh = await withDb.inject({
         method: 'PUT',

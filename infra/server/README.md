@@ -103,6 +103,11 @@ which Postgres requires to make them a database's owner. The built-in `postgres`
 first deploy and kept in `.env` (`POSTGRES_SUPERUSER_PASSWORD`); Postgres only uses it once,
 when it creates its data directory.
 
+With the `BACKUP_*` settings, the agent runs `pg_dump` in this container every night, through
+`docker exec`, as the superuser over the local socket, and uploads the dumps to a bucket
+([Backups and restoring](../../docs/guides/backups.md)). Hetzner's server backups
+(`infra/hetzner`) also keep the `postgres_data` volume.
+
 ## Memory
 
 Spotcraft's own limits add up to about 4.2 GB: Caddy 512 MB, cloudflared 128 MB, agent 256 MB,

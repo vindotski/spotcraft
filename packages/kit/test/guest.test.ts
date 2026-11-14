@@ -173,6 +173,43 @@ describe('guests', { skip: !SUPERUSER_URL && 'KIT_TEST_POSTGRES_URL is not set' 
     }
   })
 
+  it("counts the proxy's X-Forwarded-For entry, and an IPv6 /64 as one address", async () => {
+    const kit = createBackend({
+      databaseUrl: appUrl(),
+      baseURL: 'http://localhost:5173',
+      secret: SECRET,
+      guestLimit: { max: 1, windowMs: 60_000 },
+    })
+    const via = (forwardedFor: string) =>
+      new Request('http://localhost:5173/', { headers: { 'x-forwarded-for': forwardedFor } })
+    try {
+      await kit.guest(via('6.6.6.6, 2001:db8:1:2::1'))
+      // Another address in the same /64, behind a different spoofed first entry.
+      await assert.rejects(kit.guest(via('7.7.7.7, 2001:db8:1:2::ffff')), GuestLimitError)
+      // An address passed in counts as its /64 too.
+      await assert.rejects(
+        kit.guest(request(), { clientAddress: '2001:db8:1:2:abcd::9' }),
+        GuestLimitError,
+      )
+      await kit.guest(via('2001:db8:1:3::1'))
+    } finally {
+      await kit.close()
+    }
+  })
+
+  it('check() passes against a current database and names a bad one', async () => {
+    const kit = backend()
+    await kit.check().finally(() => kit.close())
+    const wrong = createBackend({
+      databaseUrl: urlFor(appDatabaseName(APP), 'not-the-password', appDatabaseName(APP)),
+      baseURL: 'http://localhost:5173',
+      secret: SECRET,
+    })
+    await assert
+      .rejects(wrong.check(), /Can't connect to the app's database \(DATABASE_URL\): .*password/)
+      .finally(() => wrong.close())
+  })
+
   it('refuses to run against an older auth schema', async () => {
     await query(
       urlFor(ADMIN, ADMIN_PASSWORD, appDatabaseName(APP)),

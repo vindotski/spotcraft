@@ -10,6 +10,70 @@ raises the minor version and is listed under **Changed** or **Removed** with mig
 
 ## [Unreleased]
 
+### Added
+
+- **Backups** ([ADR 0030](docs/decisions/0030-backups.md), guide:
+  [Backups and restoring](docs/guides/backups.md)):
+  - **Nightly, to a bucket.** Every night at 03:00 UTC, the agent backs up each app to an
+    S3-compatible bucket: a `pg_dump` of its database, and its `app.json` and `secrets.json`.
+  - **In the dashboard.** It shows each app's last backup, red when it failed or is over a day
+    old, and the app page has **Back up now**.
+  - **In `infra/cloudflare`,** `backup_bucket` makes an R2 bucket that deletes backups after
+    `backup_retention_days` (30). A bucket lock keeps them from being deleted or overwritten
+    before then, even with the agent's key.
+  - **Restoring** is a documented procedure that restores each part as the role that owns it,
+    never as the superuser alone, because an app's dump can hold code that runs during a
+    restore.
+  - **To turn it on:**
+    1. Set `backup_bucket` and run `tofu apply`. This needs R2 enabled and the module's token
+       to have Workers R2 Storage: Edit.
+    2. Add the `backup_settings` output as variables.
+    3. Make an R2 token for the bucket and add it as the secrets `BACKUP_ACCESS_KEY_ID` and
+       `BACKUP_SECRET_ACCESS_KEY`.
+    4. Deploy.
+
+- **A deploy hook, so an app's CI can deploy every build**
+  ([ADR 0029](docs/decisions/0029-deploy-hook.md), guide:
+  [Deploy from CI](docs/guides/deploy-from-ci.md)):
+  - Turn it on in the app's page in the dashboard and save the token, shown once, in the app's
+    repository.
+  - CI POSTs the new tag to `/hooks/deploy/<name>` and polls until it is live.
+  - Only the tag changes; the image, env and limits stay as set in the dashboard.
+  - **Upgrading with Cloudflare Access:** run `tofu apply` in `infra/cloudflare`. It adds an Access
+    application that lets `<dashboard>/hooks/deploy` through without a sign-in.
+
+- **Default security headers for apps.** Caddy sends `X-Frame-Options: DENY`, a
+  `Permissions-Policy` that turns off camera, microphone, geolocation, payment and USB, and
+  `Cross-Origin-Opener-Policy: same-origin`, but only when the app doesn't send its own. The
+  app's CSP stays its own to set. To override a default:
+  - **framing:** an app meant to be framed sends its own `X-Frame-Options`, or a CSP with
+    `frame-ancestors`, which browsers follow instead;
+  - **camera, microphone, geolocation, payment or USB:** the app sends its own
+    `Permissions-Policy` allowing them, e.g. `camera=(self)`. A CSP doesn't change these;
+  - **popups that need `window.opener`** (some OAuth flows): the app sends its own
+    `Cross-Origin-Opener-Policy`, e.g. `same-origin-allow-popups`.
+
+### Changed
+
+- **Hetzner's daily server backups are on by default** (`apps_server_backups = true` in
+  `infra/hetzner`, +20% of the server's price). `tofu apply` turns them on for a server where the
+  variable isn't set. Set it to `false` to keep them off.
+
+- **Deploys have no downtime.** The agent starts the new version in a second slot next to the
+  live one, moves traffic once it is healthy, then stops the old one, which gets 30 seconds to
+  finish its requests. A version that fails never takes traffic, and the old one isn't restarted
+  ([ADR 0028](docs/decisions/0028-zero-downtime-deploys.md)). For a few seconds both versions run
+  against the app's database, so an app's migrations must only add; its memory briefly doubles.
+  Existing apps move into a slot on their next deploy, with no steps needed. **Breaking:** app
+  names ending in `-blue` or `-green` are now reserved. Rename such an app (add it under a new
+  name, then remove the old one) before upgrading.
+
+### Fixed
+
+- **An app's `app.json`, which holds its env, is readable by the agent's user only.** It was
+  written with the default mode (usually world-readable). The agent fixes existing files when it
+  starts.
+
 ## [0.4.1] - 2026-11-13
 
 A fix for Log out behind Cloudflare Access. No upgrade steps: deploy `0.4.1`.

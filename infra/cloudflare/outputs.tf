@@ -21,6 +21,14 @@ output "dashboard_settings" {
   }
 }
 
+output "backup_settings" {
+  description = "Variables for the agent's nightly backups (ADR 0030); empty without backup_bucket."
+  value = {
+    BACKUP_S3_ENDPOINT = var.backup_bucket != "" ? "https://${var.account_id}.r2.cloudflarestorage.com" : ""
+    BACKUP_BUCKET      = var.backup_bucket
+  }
+}
+
 output "next_steps" {
   description = "What to do after an apply."
   value       = <<-EOT
@@ -29,6 +37,9 @@ output "next_steps" {
        production environment, plus CF_ACCESS_TEAM_DOMAIN (<team>.cloudflareaccess.com, from
        Zero Trust settings), and the agent's own token (README) into the secret
        CLOUDFLARE_API_TOKEN.
-    3. Deploy with EDGE=cloudflare, then close ports 80 and 443 (infra/hetzner: edge = "cloudflare").
+    3. With backup_bucket: copy backup_settings into variables of the same names, and make an R2
+       token for the bucket (README) into the secrets BACKUP_ACCESS_KEY_ID and
+       BACKUP_SECRET_ACCESS_KEY.
+    4. Deploy with EDGE=cloudflare, then close ports 80 and 443 (infra/hetzner: edge = "cloudflare").
   EOT
 }

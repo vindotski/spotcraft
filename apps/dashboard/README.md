@@ -6,15 +6,16 @@ VictoriaMetrics. It has no database: the agent's files are the app list.
 
 ## Screens
 
-| Path                | What                                                                                                            |
-| ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `/login`            | password login (5 failures per client in 15 minutes lock it out; IPv6 counts per /64)                           |
-| `/`                 | apps: status, address, image:tag, 24-hour uptime                                                                |
-| `/apps/new`         | add an app: name, image, tag (Docker Hub suggestions), custom domain, port, limits, env, database, sign-in      |
-| `/apps/:name`       | status, reachability, uptime, CPU, memory, response time, settings, domain status, logs; Edit, Redeploy, Remove |
-| `/apps/:name/users` | an app's users (guests and registered), newest first; delete one with a confirmation                            |
-| `/apps/:name/edit`  | change settings and deploy                                                                                      |
-| `/server`           | the server's CPU, memory, disk, load, uptime                                                                    |
+| Path                  | What                                                                                                                                                |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/login`              | password login (5 failures per client in 15 minutes lock it out; IPv6 counts per /64)                                                               |
+| `/`                   | apps: status, address, image:tag, backup state (with backups), 24-hour uptime                                                                       |
+| `/apps/new`           | add an app: name, image, tag (Docker Hub suggestions), custom domain, port, limits, env, database, sign-in                                          |
+| `/apps/:name`         | status, reachability, uptime, CPU, memory, response time, settings, backups (Back up now), deploy hook, domain status, logs; Edit, Redeploy, Remove |
+| `/apps/:name/users`   | an app's users (guests and registered), newest first; delete one with a confirmation                                                                |
+| `/apps/:name/edit`    | change settings and deploy                                                                                                                          |
+| `/server`             | the server's CPU, memory, disk, load, uptime                                                                                                        |
+| `/hooks/deploy/:name` | the deploy hook for the app's CI, no sign-in: POST a tag, GET how it went ([guide](../../docs/guides/deploy-from-ci.md))                            |
 
 **Database** gives the app its own Postgres database on the server, as `DATABASE_URL`
 ([ADR 0015](../../docs/decisions/0015-shared-postgres.md)). The form refuses an own
@@ -64,8 +65,12 @@ docker build .                                     # the spotcraft image, from t
 
 - App routes are `/apps/[name=name]`: the name must match the agent's rule (`src/params.ts`),
   and agent calls encode it.
-- Every route but `/login` needs a session or a Cloudflare Access sign-in; `/api/*` answers 401
-  instead of redirecting.
+- Every route but `/login` and `/hooks/deploy/<name>` needs a session or a Cloudflare Access sign-in;
+  `/api/*` answers 401 instead of redirecting.
+- **The deploy hook** (`/hooks/deploy/<name>`, [ADR 0029](../../docs/decisions/0029-deploy-hook.md))
+  is for an app's CI. It takes the app's hook token as `Authorization: Bearer`, and JSON only, so a
+  browser can't post to it cross-site without a preflight. The agent checks the token; the
+  dashboard only relays it. The app page shows a new token once.
 - **Access sign-in** (both `CF_ACCESS_*` set, [ADR 0023](../../docs/decisions/0023-access-sign-in.md)):
   a valid `Cf-Access-Jwt-Assertion` header counts as signed in. It must be signed with one of the
   team's published keys (cached, fetched from `/cdn-cgi/access/certs`), name the team as issuer and
