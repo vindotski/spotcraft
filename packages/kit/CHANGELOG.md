@@ -11,6 +11,28 @@ to run against an older schema.
 
 ## [Unreleased]
 
+The server glue every app wrote around the kit, now in it
+([ADR 0031](../../docs/decisions/0031-kit-app-glue.md)). No change to the `auth` schema (still
+version 1); works with every Spotcraft from 0.2.0.
+
+### Added
+
+- `@spotcraft/kit/migrate`: `migrateApp` runs the app's own migrations in one transaction,
+  under an advisory lock and a 5 s lock timeout, recorded in `public.app_migrations`. It stops
+  on a migration added out of order or renamed, and on a database newer than the app.
+  `migrationsFromFiles` turns SQL files (such as `drizzle-kit generate`'s) into migrations, and
+  `adoptDrizzle` takes over a database Drizzle's migrator managed.
+- `backend.check()` checks the database and its `auth` schema at once, for a check at start.
+- `isGuestLimitError(error)`, which works across bundles where `instanceof` fails.
+- `clientAddress(request, fallback)` and `network(address)`.
+
+### Changed
+
+- `guest(request)` takes the client address from the last X-Forwarded-For entry, which
+  Spotcraft's Caddy sets, when `clientAddress` isn't passed.
+- Every client address the guest limit counts, passed in or read, counts as its /64 when it is
+  IPv6. One phone could make guests from many addresses before.
+
 ## [0.3.1] - 2026-11-13
 
 ### Security
