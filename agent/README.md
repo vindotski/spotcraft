@@ -179,16 +179,18 @@ to `/apps/:name/release` ([ADR 0029](../docs/decisions/0029-deploy-hook.md), gui
   keeps only its SHA-256 in the app's `secrets.json`; a new one replaces the old. It is never
   part of the app as the API returns it.
 - **The routes check it.** The release routes take it in `X-Hook-Token`, next to the dashboard's
-  own token, and compare digests in constant time. A wrong token, a rotated one, an app without
+  own token, and compare digests in constant time. A missing, wrong or rotated token, an app without
   a hook and an app that doesn't exist all get 401.
 - **A release changes only the tag,** and never takes over DNS records. It reads the stored
   spec inside the deploy queue, so an edit queued before it is kept, and answers 202 at once.
-- **One release per app waits.** A newer one replaces the waiting one's tag. When it runs, the
-  token it came with must still be the app's, so a new token or turning the hook off also stops
-  a release that is still waiting.
+- **One release per app waits.** A newer one cancels the waiting one and queues behind
+  anything queued meanwhile. When it runs, the token it came with must still be the app's. Token
+  changes have their own lock on `secrets.json`, not the deploy queue, so they answer at once
+  and cancel a waiting release straight away.
 - **Its state** (`deploying`, `live`, `failed` with the agent's message, no command output) is
-  kept in memory, the latest release per app, and forgotten when the token changes or the app is
-  removed. Without one since the agent started, `GET`
+  kept in memory, the latest release per app, and forgotten when the token changes, the app is
+  removed, or the dashboard deploys it. Without a record, `GET` answers `live` with the app's
+  tag once startup recovery has finished, and 503 before. Without one since the agent started, `GET`
   answers `live` with the app's tag.
 
 ## App databases

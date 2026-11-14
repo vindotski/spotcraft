@@ -22,23 +22,29 @@
 
   // A GitHub Actions step for the app's workflow, after its image is pushed (ADR 0029).
   const hookStep = $derived(`- name: Deploy to Spotcraft
+  timeout-minutes: 20
   env:
     URL: ${data.hook.url}
     TOKEN: \${{ secrets.SPOTCRAFT_DEPLOY_TOKEN }}
+    # A pull may take 5 minutes and the health check 2, after other apps' deploys.
+    WAIT_MINUTES: 15
   run: |
     TAG="sha-\${GITHUB_SHA::7}"
     auth="Authorization: Bearer $TOKEN"
-    curl -fsS -X POST "$URL" -H "$auth" -H 'content-type: application/json' -d "{\\"tag\\":\\"$TAG\\"}"
-    for _ in $(seq 60); do
-      result=$(curl -fsS "$URL" -H "$auth")
+    curl -fsS --retry 5 --retry-all-errors -X POST "$URL" -H "$auth" \\
+      -H 'content-type: application/json' -d "{\\"tag\\":\\"$TAG\\"}"
+    deadline=$((SECONDS + WAIT_MINUTES * 60))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      sleep 5
+      # A failed poll (Spotcraft restarting, a network blip) is tried again.
+      result=$(curl -fsS "$URL" -H "$auth") || continue
       case $(echo "$result" | jq -r '.state + " " + .tag') in
         "live $TAG") exit 0 ;;
         live*) echo "Another tag is live: $result"; exit 1 ;;
         failed*) echo "$result"; exit 1 ;;
       esac
-      sleep 5
     done
-    echo "Still deploying after 5 minutes"; exit 1`)
+    echo "Not live after $WAIT_MINUTES minutes"; exit 1`)
 </script>
 
 <svelte:head><title>{app.name} · Spotcraft</title></svelte:head>

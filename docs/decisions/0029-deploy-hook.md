@@ -43,16 +43,21 @@ two minutes: the image pull plus up to 120 seconds for the health check.
     ([ADR 0022](0022-takeover-setting.md)), even if the app's setting allows it.
   - The deploy runs in the agent's queue, reading the spec there, so an edit queued before it
     is kept.
-  - At most one hook release per app waits in the queue. A newer one replaces its tag, so
-    repeated calls can't pile up deploys in front of other apps.
-  - When it runs, the token it came with must still be the app's: turning the hook off or
-    making a new token also stops a release that is waiting.
+  - At most one hook release per app waits to deploy. A newer one cancels it and takes its own
+    place at the back of the queue, after any edit queued in between. Cancelled releases do
+    nothing when their turn comes, so repeated calls can't pile up deploys in front of other
+    apps.
+  - Token changes don't wait for deploys: they take a lock of their own on `secrets.json`, so
+    they answer at once. A token change cancels the waiting release, and when a release runs,
+    the token it came with must still be the app's.
   - The answer is 202, at once.
 - **`GET` says how the last release went:** `deploying`, `live` or `failed`, with the tag, the
   time and, on failure, the agent's message without command output. The agent keeps this in
-  memory. After a restart, GET reports `live` with the app's current tag.
-- **Wrong, rotated and missing tokens, and unknown apps, all get 401**, so a caller learns
-  nothing about which apps exist. The POST takes JSON only.
+  memory. With no record (after a restart, or after the dashboard deployed the app), GET
+  reports `live` with the app's current tag, but only once startup recovery has finished
+  ([ADR 0028](0028-zero-downtime-deploys.md)); before that it answers 503.
+- **Wrong, rotated and missing tokens, and unknown apps, all get 401,** checked before the
+  body, so a caller learns nothing about which apps exist. The POST takes JSON only.
 
 ## Consequences
 

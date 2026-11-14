@@ -249,20 +249,25 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
   )
 
   // A release from the app's CI, relayed by the dashboard: the hook token comes in
-  // X-Hook-Token, next to the dashboard's own token. Only the tag can change.
-  const hookHeaders = {
-    type: 'object',
-    required: ['x-hook-token'],
-    properties: { 'x-hook-token': { type: 'string', minLength: 1, maxLength: 256 } },
-  } as const
-  type HookHeaders = { 'x-hook-token': string }
+  // X-Hook-Token, next to the dashboard's own token. Only the tag can change. A missing token
+  // gets the same 401 as a wrong one.
+  const hookToken = (headers: Record<string, string | string[] | undefined>) => {
+    const value = headers['x-hook-token']
+    if (typeof value !== 'string' || value.length === 0 || value.length > 256) {
+      throw new AgentError('Unauthorized', 401)
+    }
+    return value
+  }
 
-  app.post<{ Params: NameParams; Body: { tag: string }; Headers: HookHeaders }>(
+  app.post<{ Params: NameParams; Body: { tag: string } }>(
     '/apps/:name/release',
     {
+      // The token is checked before the body, so a caller without one learns nothing more.
+      preValidation: async (request) => {
+        hookToken(request.headers)
+      },
       schema: {
         params: nameParamsSchema,
-        headers: hookHeaders,
         body: {
           type: 'object',
           additionalProperties: false,
@@ -273,15 +278,15 @@ export function buildApp({ token, apps, allowedIps = [], logger = false }: Build
     },
     async (request, reply) => {
       const { name } = request.params
-      const state = await apps.release(name, request.headers['x-hook-token'], request.body.tag)
+      const state = await apps.release(name, hookToken(request.headers), request.body.tag)
       return reply.code(202).send(state)
     },
   )
 
-  app.get<{ Params: NameParams; Headers: HookHeaders }>(
+  app.get<{ Params: NameParams }>(
     '/apps/:name/release',
-    { schema: { params: nameParamsSchema, headers: hookHeaders } },
-    async (request) => apps.releaseState(request.params.name, request.headers['x-hook-token']),
+    { schema: { params: nameParamsSchema } },
+    async (request) => apps.releaseState(request.params.name, hookToken(request.headers)),
   )
 
   app.get<{ Params: NameParams; Querystring: { tail: number } }>(

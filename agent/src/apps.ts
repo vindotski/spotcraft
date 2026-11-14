@@ -114,6 +114,15 @@ export interface ReleaseState {
   error?: string
 }
 
+/** A hook release waiting in the queue, and the token it came with. */
+interface PendingRelease {
+  id: number
+  tag: string
+  tokenHash: string
+  /** Set when a newer release or a token change replaced it: it does nothing when its turn comes. */
+  cancelled: boolean
+}
+
 const sha256 = (value: string) => createHash('sha256').update(value).digest()
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -133,8 +142,12 @@ export class Apps {
   /** The last release through each app's deploy hook, with a number to tell releases apart. */
   readonly #releases = new Map<string, ReleaseState & { id: number }>()
   /** Per app, the hook release waiting in the queue, if any, and the token it came with. */
-  readonly #waitingReleases = new Map<string, { tag: string; id: number; tokenHash: string }>()
+  readonly #waitingReleases = new Map<string, PendingRelease>()
   #releaseCount = 0
+  /** Read-modify-writes of `secrets.json`, one at a time (`#withSecrets`). */
+  #secretsQueue: Promise<unknown> = Promise.resolve()
+  /** Whether startup recovery has finished, so stored tags are what serves (`recover`). */
+  #recovered = false
 
   /** Without `databases`, apps can't ask for a database (the server has no Postgres). */
   constructor(
@@ -277,7 +290,13 @@ export class Apps {
    * With `spec.takeOver`, a custom domain's existing DNS records are replaced (ADR 0022).
    */
   deploy(spec: AppSpec): Promise<AppStatus> {
-    return this.#exclusive(() => this.#deploy(spec))
+    return this.#exclusive(async () => {
+      const status = await this.#deploy(spec)
+      // The dashboard deployed (maybe another tag): a finished hook release no longer says
+      // what runs. One still waiting or running keeps its record.
+      if (this.#releases.get(spec.name)?.state !== 'deploying') this.#releases.delete(spec.name)
+      return status
+    })
   }
 
   /**
@@ -331,20 +350,32 @@ export class Apps {
   }
 
   /**
-   * Forgets the app's hook releases: the one waiting in the queue doesn't run, and its state
+   * Forgets the app's hook releases: the one waiting in the queue is cancelled, and their state
    * isn't shown to whoever holds the next token. Done at once, not in the queue, so a release
    * that is waiting can't run before the token change.
    */
   #forgetReleases(name: string) {
+    const waiting = this.#waitingReleases.get(name)
+    if (waiting) waiting.cancelled = true
     this.#waitingReleases.delete(name)
     this.#releases.delete(name)
   }
 
+  /**
+   * Runs a read-modify-write of `secrets.json` one at a time. Not in the deploy queue, so token
+   * changes answer at once even while deploys run.
+   */
+  #withSecrets<T>(task: () => Promise<T>): Promise<T> {
+    const next = this.#secretsQueue.then(task, task)
+    this.#secretsQueue = next.catch(() => {})
+    return next
+  }
+
   /** Makes a new deploy hook token for the app, replacing any old one; returns it, once. */
   createHookToken(name: string): Promise<string> {
-    this.#forgetReleases(name)
-    return this.#exclusive(async () => {
+    return this.#withSecrets(async () => {
       if (!(await this.#store.get(name))) throw new AgentError('No such app', 404)
+      this.#forgetReleases(name)
       const token = randomBytes(32).toString('base64url')
       const secrets = await this.#store.readSecrets(name)
       await this.#store.writeSecrets(name, {
@@ -357,9 +388,9 @@ export class Apps {
 
   /** Turns the app's deploy hook off. */
   deleteHookToken(name: string): Promise<void> {
-    this.#forgetReleases(name)
-    return this.#exclusive(async () => {
+    return this.#withSecrets(async () => {
       if (!(await this.#store.get(name))) throw new AgentError('No such app', 404)
+      this.#forgetReleases(name)
       const { hookTokenHash: _, ...secrets } = await this.#store.readSecrets(name)
       await this.#store.writeSecrets(name, secrets)
     })
@@ -386,53 +417,59 @@ export class Apps {
    * image, env and limits stay as the dashboard set them, and DNS records are never taken
    * over. Answers at once; the deploy runs in the queue, and `releaseState` says how it went.
    *
-   * At most one release per app waits in the queue: a newer one replaces its tag, so a CI loop
-   * or a leaked token can't pile up deploys in front of everything else. When it runs, the
-   * token it came with must still be the app's, so turning the hook off or making a new token
-   * also stops a release that is still waiting.
+   * At most one release per app waits to deploy: a newer one cancels it and takes its own
+   * place at the back of the queue, so it also comes after any edit queued in between. A
+   * cancelled release is a no-op when its turn comes, so a CI loop or a leaked token can't pile
+   * up deploys in front of everything else. When it runs, the token it came with must still be
+   * the app's; turning the hook off or making a new token cancels a waiting release at once.
    */
   async release(name: string, token: string, tag: string): Promise<ReleaseState> {
     if (!(await this.#hookAllows(name, token))) throw new AgentError('Unauthorized', 401)
-    const id = ++this.#releaseCount
+    const pending: PendingRelease = {
+      id: ++this.#releaseCount,
+      tag,
+      tokenHash: sha256(token).toString('hex'),
+      cancelled: false,
+    }
+    const replaced = this.#waitingReleases.get(name)
+    if (replaced) replaced.cancelled = true
+    this.#waitingReleases.set(name, pending)
     const started: ReleaseState = { state: 'deploying', tag, at: new Date().toISOString() }
-    this.#releases.set(name, { ...started, id })
-    const tokenHash = sha256(token).toString('hex')
-    const waiting = this.#waitingReleases.get(name)
-    this.#waitingReleases.set(name, { tag, id, tokenHash })
-    if (waiting) return started // the queued task will deploy this tag instead
-    const settle = (releaseId: number, result: Partial<ReleaseState>) => {
+    this.#releases.set(name, { ...started, id: pending.id })
+    const settle = (result: Partial<ReleaseState>) => {
       // A newer release since: its state is the one to keep.
       const current = this.#releases.get(name)
-      if (current?.id === releaseId) this.#releases.set(name, { ...current, ...result })
+      if (current?.id === pending.id) this.#releases.set(name, { ...current, ...result })
     }
-    let next: { tag: string; id: number; tokenHash: string } | undefined
     this.#exclusive(async () => {
-      next = this.#waitingReleases.get(name)
-      this.#waitingReleases.delete(name)
-      if (!next) return
+      if (pending.cancelled) return false
+      if (this.#waitingReleases.get(name) === pending) this.#waitingReleases.delete(name)
       const { hookTokenHash } = await this.#store.readSecrets(name)
-      if (hookTokenHash !== next.tokenHash) {
+      if (hookTokenHash !== pending.tokenHash) {
         throw new AgentError('The deploy hook token changed before this release ran', 401)
       }
       const spec = await this.#store.get(name)
       if (!spec) throw new AgentError(`${name} was removed`, 404)
-      return this.#deploy({ ...spec, tag: next.tag }, { takeOver: false })
+      await this.#deploy({ ...spec, tag }, { takeOver: false })
+      return true
     }).then(
-      () => next && settle(next.id, { state: 'live' }),
+      (ran) => ran && settle({ state: 'live' }),
       (error: unknown) => {
-        if (!next) return
         // No one is waiting on this request: the command output goes to the agent's log.
         const output = error instanceof AgentError ? error.output : ''
         console.warn(
-          `release of ${name}:${next.tag} through its deploy hook failed: ${message(error)}\n${output}`,
+          `release of ${name}:${tag} through its deploy hook failed: ${message(error)}\n${output}`,
         )
-        settle(next.id, { state: 'failed', error: message(error) })
+        settle({ state: 'failed', error: message(error) })
       },
     )
     return started
   }
 
-  /** How the app's last hook release went; without one since the agent started, its live tag. */
+  /**
+   * How the app's last hook release went. Without one since the agent started (or since the
+   * dashboard last deployed), the tag that runs, once startup recovery has made sure of it.
+   */
   async releaseState(name: string, token: string): Promise<ReleaseState> {
     if (!(await this.#hookAllows(name, token))) throw new AgentError('Unauthorized', 401)
     const release = this.#releases.get(name)
@@ -440,6 +477,8 @@ export class Apps {
       const { id: _, ...state } = release
       return state
     }
+    // Until `recover` has run, the stored tag may not be the one Caddy routes to.
+    if (!this.#recovered) throw new AgentError('Spotcraft is starting; try again', 503)
     const spec = await this.#store.get(name)
     if (!spec) throw new AgentError('Unauthorized', 401)
     return { state: 'live', tag: spec.tag }
@@ -585,11 +624,13 @@ export class Apps {
           strays.push({ name, live })
         }
       }
-      if (strays.length === 0) return changed
-      // The previous agent may have committed a slot without reloading Caddy.
-      const reload = await this.#reloadCaddy()
-      if (reload.code !== 0) throw new AgentError('Caddy could not reload', 500, tail(reload))
-      for (const { name, live } of strays) await this.#removeOtherSlots(name, live)
+      if (strays.length > 0) {
+        // The previous agent may have committed a slot without reloading Caddy.
+        const reload = await this.#reloadCaddy()
+        if (reload.code !== 0) throw new AgentError('Caddy could not reload', 500, tail(reload))
+        for (const { name, live } of strays) await this.#removeOtherSlots(name, live)
+      }
+      this.#recovered = true
       return changed
     })
   }
@@ -655,7 +696,13 @@ export class Apps {
       throw new AgentError(`Could not prepare the database for ${name}`, 502, message(error))
     }
     if (!secrets.databasePassword) {
-      await this.#store.writeSecrets(name, { ...secrets, databasePassword: password })
+      // Read again under the secrets lock: a hook token may have been written meanwhile.
+      await this.#withSecrets(async () => {
+        const current = await this.#store.readSecrets(name)
+        if (!current.databasePassword) {
+          await this.#store.writeSecrets(name, { ...current, databasePassword: password })
+        }
+      })
     }
     return url
   }
