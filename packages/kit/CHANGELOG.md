@@ -11,6 +11,8 @@ to run against an older schema.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-14
+
 The server glue every app wrote around the kit, now in it
 ([ADR 0031](../../docs/decisions/0031-kit-app-glue.md)). No change to the `auth` schema (still
 version 1); works with every Spotcraft from 0.2.0.
@@ -64,7 +66,8 @@ client address and a check of the `auth` schema version; `currentGuest` reads wi
 The `./schema` export (the `auth` tables and migrations) and `./provision` (an app's database
 and role). `auth` schema version 1; needs Spotcraft 0.2.0 or later.
 
-[Unreleased]: https://github.com/vindotski/spotcraft/compare/kit-v0.3.1...HEAD
+[Unreleased]: https://github.com/vindotski/spotcraft/compare/kit-v0.4.0...HEAD
+[0.4.0]: https://github.com/vindotski/spotcraft/compare/kit-v0.3.1...kit-v0.4.0
 [0.3.1]: https://github.com/vindotski/spotcraft/compare/kit-v0.3.0...kit-v0.3.1
 [0.3.0]: https://github.com/vindotski/spotcraft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vindotski/spotcraft/releases/tag/v0.2.0
