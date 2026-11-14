@@ -25,8 +25,8 @@ export interface BackupTarget {
   put(key: string, body: Uint8Array, contentType?: string): Promise<void>
 }
 
-/** Dumps one database, in pg_dump's custom format. */
-export type Dump = (database: string) => Promise<Buffer>
+/** Dumps one app's database, in pg_dump's custom format. */
+export type Dump = (app: string) => Promise<Buffer>
 
 /**
  * A dump larger than this fails. It is held in memory, twice at the end (the chunks and the
@@ -45,10 +45,13 @@ const DUMP_SECONDS = 300
  */
 export function dockerDump(
   postgresContainer: string,
+  /** The app's database (the kit's `appDatabaseName`), passed in so this module needs no kit. */
+  databaseName: (app: string) => string,
   timeoutMs = (DUMP_SECONDS + 15) * 1000,
 ): Dump {
-  return (database) =>
-    new Promise((resolve, reject) => {
+  return (app) => {
+    const database = databaseName(app)
+    return new Promise((resolve, reject) => {
       const child = spawn(
         'docker',
         [
@@ -98,6 +101,7 @@ export function dockerDump(
         else resolve(Buffer.concat(chunks))
       })
     })
+  }
 }
 
 /** `20261114T030000Z`: sorts by time, and needs no encoding in a key. */

@@ -1,3 +1,4 @@
+import { appDatabaseName } from '@spotcraft/kit/provision'
 import { AccessApps } from './access.ts'
 import { buildApp } from './app.ts'
 import { Apps } from './apps.ts'
@@ -30,7 +31,7 @@ const apps = new Apps(
   cloudflare,
   config.backup && {
     target: new S3(config.backup),
-    dump: dockerDump(config.backup.postgresContainer),
+    dump: dockerDump(config.backup.postgresContainer, appDatabaseName),
   },
 )
 const app = buildApp({

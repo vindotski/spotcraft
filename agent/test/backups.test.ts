@@ -135,9 +135,9 @@ describe('backups', () => {
     }
     apps = new Apps(new Store(dir), docker, 'caddy', databases, undefined, undefined, {
       target: bucket.target,
-      dump: async (database) => {
-        dumped.push(database)
-        return Buffer.from(`dump of ${database}`)
+      dump: async (name) => {
+        dumped.push(name)
+        return Buffer.from(`dump of ${name}`)
       },
       now: () => clock,
     })
@@ -161,7 +161,7 @@ describe('backups', () => {
   it('backs up each app: its dump if it has a database, its settings either way', async () => {
     const results = await apps.backupAll()
     assert.deepEqual(Object.keys(results).sort(), ['site', 'sokobanko'])
-    assert.deepEqual(dumped, ['app_sokobanko'])
+    assert.deepEqual(dumped, ['sokobanko'])
     assert.deepEqual([...bucket.objects.keys()].sort(), [
       'site/20261114T030000Z/app.json',
       'site/20261114T030000Z/secrets.json',
@@ -183,7 +183,7 @@ describe('backups', () => {
       at: '2026-11-14T03:00:00.000Z',
       ok: true,
       key: 'sokobanko/20261114T030000Z/',
-      bytes: 'dump of app_sokobanko'.length,
+      bytes: 'dump of sokobanko'.length,
       lastOkAt: '2026-11-14T03:00:00.000Z',
     })
   })

@@ -1,5 +1,4 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { appDatabaseName } from '@spotcraft/kit/provision'
 import type { AccessApps } from './access.ts'
 import {
   type AgentSettings,
@@ -797,7 +796,7 @@ export class Apps {
       if (!spec || !files) throw new Error(`${name} has no settings on disk`)
       let bytes = 0
       if (spec.database) {
-        const dump = await backups.dump(appDatabaseName(name))
+        const dump = await backups.dump(name)
         bytes = dump.length
         await backups.target.put(`${key}database.dump`, dump)
       }
